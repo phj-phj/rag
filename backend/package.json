@@ -1,0 +1,13 @@
+{
+  "name": "papier-backend",
+  "version": "1.0.0",
+  "description": "Papier 文档分享平台后端",
+  "main": "app.js",
+  "scripts": {
+    "dev": "nodemon app.js",
+    "start": "node app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
