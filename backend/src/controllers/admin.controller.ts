@@ -64,6 +64,7 @@ export async function getStats(_req: Request, res: Response): Promise<void> {
       return {
         id: doc.id,
         title: doc.title,
+        file_type: doc.file_type,
         uploader: doc.uploader?.username,
         created_at: doc.created_at,
       }

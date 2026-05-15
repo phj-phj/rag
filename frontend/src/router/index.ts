@@ -17,29 +17,21 @@ const router = createRouter({
     },
     {
       path: '/admin',
-      component: () => import('../layouts/AdminLayout.vue'),
+      name: 'AdminDashboard',
+      component: () => import('../views/AdminDashboard.vue'),
       meta: { requiresAuth: true, requiresAdmin: true },
-      children: [
-        {
-          path: '',
-          redirect: { name: 'AdminDashboard' },
-        },
-        {
-          path: 'dashboard',
-          name: 'AdminDashboard',
-          component: () => import('../views/admin/Dashboard.vue'),
-        },
-        {
-          path: 'docs',
-          name: 'AdminDocs',
-          component: () => import('../views/admin/DocManage.vue'),
-        },
-        {
-          path: 'users',
-          name: 'AdminUsers',
-          component: () => import('../views/admin/UserManage.vue'),
-        },
-      ],
+    },
+    {
+      path: '/admin/docs',
+      name: 'AdminDocs',
+      component: () => import('../views/admin/DocManage.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: '/admin/users',
+      name: 'AdminUsers',
+      component: () => import('../views/admin/UserManage.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
     },
   ],
 })

@@ -13,9 +13,9 @@
 
       <nav class="flex-1 p-3 space-y-1">
         <router-link
-          to="/admin/dashboard"
+          to="/admin"
           class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-colors"
-          :class="$route.path === '/admin/dashboard' ? 'bg-white/15' : 'hover:bg-white/10'"
+          :class="$route.path === '/admin' ? 'bg-white/15' : 'hover:bg-white/10'"
         >
           <span>数据概览</span>
         </router-link>

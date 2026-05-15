@@ -87,7 +87,7 @@ async function handleLogin() {
   loading.value = true
   try {
     await authStore.login(username.value, password.value)
-    router.push(authStore.isAdmin ? '/admin/dashboard' : '/')
+    router.push(authStore.isAdmin ? '/admin' : '/')
   } catch (err: unknown) {
     error.value = (err as { response?: { data?: { message?: string } } }).response?.data?.message || '登录失败，请重试'
   } finally {

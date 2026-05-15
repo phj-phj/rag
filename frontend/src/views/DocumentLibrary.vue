@@ -44,7 +44,7 @@
         </div>
         <router-link
           v-if="authStore.isAdmin"
-          to="/admin/dashboard"
+          to="/admin"
           class="btn-admin"
         >
           后台管理
@@ -66,10 +66,44 @@
         </router-link>
         <div
           v-if="authStore.user"
-          class="avatar"
-          :title="authStore.user.username"
+          class="avatar-wrapper"
         >
-          {{ authStore.user.username[0].toUpperCase() }}
+          <div
+            class="avatar"
+            @click="showLogout = !showLogout"
+          >
+            {{ authStore.user.username[0].toUpperCase() }}
+          </div>
+          <Transition name="fade">
+            <div
+              v-if="showLogout"
+              class="avatar-dropdown"
+            >
+              <div class="dropdown-user">
+                <span class="dropdown-name">{{ authStore.user.username }}</span>
+                <span class="dropdown-role">{{ authStore.isAdmin ? '管理员' : '用户' }}</span>
+              </div>
+              <button
+                class="dropdown-item"
+                @click="handleLogout"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  class="dropdown-icon"
+                ><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line
+                  x1="21"
+                  y1="12"
+                  x2="9"
+                  y2="12"
+                /></svg>
+                退出登录
+              </button>
+            </div>
+          </Transition>
         </div>
       </div>
     </header>
@@ -339,7 +373,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { list as listDocs } from '../api/document'
@@ -365,6 +399,7 @@ const pageSize = ref(12)
 const loading = ref(false)
 const showFavorites = ref(false)
 const showUpload = ref(false)
+const showLogout = ref(false)
 
 const filters = reactive({
   title: '',
@@ -508,6 +543,19 @@ function onUploadClose() {
   loadFeatured()
 }
 
+function handleLogout() {
+  showLogout.value = false
+  authStore.logout()
+  router.push('/login')
+}
+
+function onClickOutside(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (!target.closest('.avatar-wrapper')) {
+    showLogout.value = false
+  }
+}
+
 function formatDate(d: string) {
   if (!d) return ''
   return new Date(d).toLocaleDateString('zh-CN')
@@ -527,6 +575,7 @@ function avatarColor(name: string): string {
 }
 
 onMounted(async () => {
+  document.addEventListener('click', onClickOutside)
   try {
     const { data: catData } = await getCategories()
     categories.value = catData
@@ -544,6 +593,10 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     loadFavTotal()
   }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onClickOutside)
 })
 </script>
 
@@ -742,6 +795,79 @@ onMounted(async () => {
 }
 
 .avatar:hover { transform: scale(1.08); }
+
+.avatar-wrapper {
+  position: relative;
+  z-index: 100;
+}
+
+.avatar-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 180px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+  overflow: hidden;
+  z-index: 200;
+}
+
+.dropdown-user {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dropdown-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.dropdown-role {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.dropdown-item:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.dropdown-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
 
 /* SIDEBAR */
 .sidebar {

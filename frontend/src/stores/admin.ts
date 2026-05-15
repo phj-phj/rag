@@ -2,7 +2,19 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as adminApi from '../api/admin'
 
-interface AdminStats { totalDocs: number; totalCategories: number; totalUsers: number }
+interface CategoryStat { category_id: number; category_name: string; count: number }
+interface UploadTrendItem { date: string; count: number }
+interface RecentActivity { id: number; title: string; file_type: string; uploader: string; created_at: string }
+
+interface AdminStats {
+  totalDocs: number
+  totalCategories: number
+  totalUsers: number
+  categoryStats: CategoryStat[]
+  uploadTrend: UploadTrendItem[]
+  recentActivities: RecentActivity[]
+}
+
 interface AdminUser { id: number; username: string; role: string; document_count: number; created_at: string }
 
 export const useAdminStore = defineStore('admin', () => {
@@ -13,7 +25,7 @@ export const useAdminStore = defineStore('admin', () => {
 
   async function fetchStats() {
     const { data } = await adminApi.getStats()
-    stats.value = data
+    stats.value = data as AdminStats
   }
 
   async function fetchUsers(params?: Record<string, unknown>) {

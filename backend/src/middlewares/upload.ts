@@ -1,6 +1,6 @@
+import crypto from 'crypto'
 import multer from 'multer'
 import path from 'path'
-import { v4 as uuidv4 } from 'uuid'
 import { Request } from 'express'
 
 const ALLOWED_TYPES = [
@@ -37,7 +37,7 @@ const storage = multer.diskStorage({
   },
   filename: (_req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
     const ext = EXT_MAP[file.mimetype] || path.extname(file.originalname).slice(1) || 'bin'
-    cb(null, `${uuidv4()}.${ext}`)
+    cb(null, `${crypto.randomUUID()}.${ext}`)
   },
 })
 
