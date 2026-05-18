@@ -189,6 +189,9 @@
                 <th class="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">
                   标签
                 </th>
+                <th class="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider w-28">
+                  上传时间
+                </th>
                 <th class="text-right px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider w-48">
                   操作
                 </th>
@@ -197,7 +200,7 @@
             <tbody class="divide-y divide-gray-50">
               <tr v-if="loading">
                 <td
-                  colspan="8"
+                  colspan="9"
                   class="px-5 py-20 text-center"
                 >
                   <div class="flex flex-col items-center gap-3">
@@ -208,7 +211,7 @@
               </tr>
               <tr v-else-if="documents.length === 0">
                 <td
-                  colspan="8"
+                  colspan="9"
                   class="px-5 py-20 text-center"
                 >
                   <div class="flex flex-col items-center gap-3">
@@ -241,12 +244,12 @@
                 </td>
               </tr>
               <tr
-                v-for="doc in documents"
+                v-for="(doc, index) in documents"
                 :key="doc.id"
                 class="hover:bg-amber-50/30 transition-colors group"
               >
                 <td class="px-5 py-3.5 text-xs text-gray-400 font-mono">
-                  {{ doc.id }}
+                  {{ (page - 1) * pageSize + index + 1 }}
                 </td>
                 <td class="px-5 py-3.5">
                   <span class="font-medium text-gray-900 truncate max-w-[240px] block group-hover:text-amber-800 transition-colors">{{ doc.title }}</span>
@@ -286,6 +289,9 @@
                       {{ tag.name }}
                     </span>
                   </div>
+                </td>
+                <td class="px-5 py-3.5 text-xs text-gray-500 whitespace-nowrap">
+                  {{ formatTime(doc.createdAt) }}
                 </td>
                 <td class="px-5 py-3.5 text-right">
                   <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -434,7 +440,7 @@ import * as adminApi from '../../api/admin'
 import { getCategories } from '../../api/admin'
 
 interface DocItem {
-  id: number; title: string; file_type: string; file_size: number
+  id: number; title: string; file_type: string; file_size: number; createdAt: string
   category_id: number; category?: { name: string }
   tags?: { id: number; name: string }[]
   uploader?: { username: string }
@@ -561,6 +567,11 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+}
+
+function formatTime(d: string): string {
+  if (!d) return '-'
+  return new Date(d).toLocaleDateString('zh-CN')
 }
 
 function handleLogout() {
