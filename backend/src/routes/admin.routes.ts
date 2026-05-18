@@ -13,9 +13,10 @@ import { uploadSingle } from '../middlewares/upload'
 
 const router = Router()
 
+router.get('/stats', getStats)
+
 router.use(authenticate, requireAdmin)
 
-router.get('/stats', getStats)
 router.get('/documents', getDocuments)
 router.put('/documents/:id', updateDocument)
 router.post('/documents/:id/replace', uploadSingle, replaceDocumentFile)

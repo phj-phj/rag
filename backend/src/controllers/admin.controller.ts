@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { Op, fn, col } from 'sequelize'
+import { Op } from 'sequelize'
 import bcrypt from 'bcryptjs'
 import { Document, Category, Tag, User } from '../models'
 import { deleteFile, getFileUrl } from '../services/file.service'
@@ -15,21 +15,17 @@ export async function getStats(_req: Request, res: Response): Promise<void> {
   const totalCategories = await Category.count()
   const totalUsers = await User.count()
 
-  const docsPerCategory = await Document.findAll({
-    attributes: ['category_id', [fn('COUNT', col('id')), 'count']],
-    include: [{ model: Category, as: 'category', attributes: ['name'] }],
-    group: ['category_id'],
-    raw: false,
-  } as any)
-
-  const categoryStats = docsPerCategory.map((item) => {
-    const d = item.toJSON() as any
-    return {
-      category_id: d.category_id,
-      category_name: d.category?.name || '未分类',
-      count: d.count,
-    }
-  })
+  const categories = await Category.findAll({ order: [['id', 'ASC']] })
+  const categoryStats: { category_id: number | null; category_name: string; count: number }[] = await Promise.all(
+    categories.map(async (cat) => {
+      const count = await Document.count({ where: { category_id: cat.id } })
+      return { category_id: cat.id, category_name: cat.name, count }
+    })
+  )
+  const uncategorizedCount = await Document.count({ where: { category_id: null } })
+  if (uncategorizedCount > 0) {
+    categoryStats.push({ category_id: null as number | null, category_name: '未分类', count: uncategorizedCount })
+  }
 
   const last7Days: { date: string; count: number }[] = []
   for (let i = 6; i >= 0; i--) {

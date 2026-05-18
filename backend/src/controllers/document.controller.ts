@@ -84,6 +84,14 @@ export async function getById(req: Request, res: Response): Promise<void> {
   res.json(docToJson(doc))
 }
 
+function decodeFilename(name: string): string {
+  try {
+    return Buffer.from(name, 'latin1').toString('utf8')
+  } catch {
+    return name
+  }
+}
+
 export async function create(req: Request, res: Response): Promise<void> {
   const files = req.files as Express.Multer.File[]
   if (!files || files.length === 0) {
@@ -106,9 +114,10 @@ export async function create(req: Request, res: Response): Promise<void> {
   const createdDocs = []
 
   for (const file of files) {
+    const originalname = decodeFilename(file.originalname)
     const title = files.length === 1
-      ? (req.body.title || file.originalname)
-      : `${req.body.title || '批量上传'} - ${file.originalname}`
+      ? (req.body.title || originalname)
+      : `${req.body.title || '批量上传'} - ${originalname}`
 
     const doc = await Document.create({
       title,

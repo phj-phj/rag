@@ -162,3 +162,46 @@
   - 点击页面空白处自动关闭
   - 调用 `authStore.logout()` 清除 token，跳转 `/login`
 - 新增点击外部关闭指令逻辑（`onClickOutside` + `document.addEventListener`）
+
+## 2026-05-18
+
+### TXT 文件阅读器
+
+- **DocViewer.vue**：新建 TXT 文件内容展示页面，editorial/杂志风格排版
+  - 纸色暖底（`#faf7f2`）+ 琥珀点缀（`#d97706`），思源宋体标题
+  - `<pre>` 标签原样展示文本内容，`white-space: pre-wrap` 保留换行
+  - 文章头部：文件类型徽章 + 分类标签 + 标题 + 上传者/日期/大小
+  - 非 TXT 文件显示下载按钮占位
+  - 顶部导航栏含返回/下载按钮 + 头像退出菜单
+- **路由**：新增 `/docs/:id` → DocViewer.vue
+
+### 文档库侧边栏计数修复
+
+- **根因**：`total` 变量被"全部文档"和"收藏"视图共用，切换时被覆盖
+- **修复**：
+  - 新增 `allTotal` ref，通过独立 `loadAllTotal()` 函数获取（`listDocs({pageSize:1})`），与筛选逻辑解耦
+  - 新增 `sidebarAllTotal` computed，优先用 `dashboardStats.totalDocs`（来自 stats API），回退到 `allTotal`
+  - `clearFilters`、`toggleFavorites`、`onUploadClose`、`onMounted` 均调用 `loadAllTotal()`
+  - 上传后同步刷新 stats、categories、favTotal
+- **后端 `admin.routes.ts`**：`GET /api/admin/stats` 改为公开接口（移到 `router.use(authenticate)` 之前），不再需要登录
+
+### 中文文件名编码修复
+
+- **后端 `document.controller.ts`**：新增 `decodeFilename()` 函数
+  - 浏览器上传中文文件名时，`Content-Disposition` 头中 UTF-8 字节被当 latin1 解析
+  - 用 `Buffer.from(name, 'latin1').toString('utf8')` 转回正确的中文
+
+### TXT 文件类型识别修复
+
+- **后端上传**：`file_type` 存的是 MIME 后缀（`text/plain` → `plain`），不是 `txt`
+- **前端修复**：`DocumentLibrary.vue` 和 `DocViewer.vue` 的 TXT 判断同时检查 `txt` 和 `plain`
+
+### 分类 API 增强
+
+- **backend `category.routes.ts`**：重写为返回每个分类的文档计数（`docCount`），侧边栏分类旁终于显示数量
+
+### HTML 预览文件
+
+- `files-preview.html`：文档库页面的前端设计稿（网格/列表视图切换）
+- `txt-viewer-preview.html`：TXT 阅读器的前端设计稿（编辑风格）
+- `file-viewer-preview.html`：文件详情页的早期设计稿

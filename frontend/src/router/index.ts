@@ -16,6 +16,11 @@ const router = createRouter({
       meta: { guest: true },
     },
     {
+      path: '/docs/:id',
+      name: 'DocViewer',
+      component: () => import('../views/DocViewer.vue'),
+    },
+    {
       path: '/admin',
       name: 'AdminDashboard',
       component: () => import('../views/AdminDashboard.vue'),

@@ -134,7 +134,7 @@
                 <polyline points="9 22 9 12 15 12 15 22" />
               </svg>
               全部文档
-              <span class="sidebar-count">{{ total }}</span>
+              <span class="sidebar-count">{{ sidebarAllTotal }}</span>
             </a>
           </li>
           <li>
@@ -393,6 +393,7 @@ const documents = ref<DocItem[]>([])
 const categories = ref<CategoryItem[]>([])
 const tags = ref<OptionItem[]>([])
 const total = ref(0)
+const allTotal = ref(0)
 const favTotal = ref(0)
 const page = ref(1)
 const pageSize = ref(12)
@@ -412,6 +413,10 @@ const dashboardStats = ref<DashboardStats | null>(null)
 
 const catColors = ['#7a3b3b', '#c4873b', '#6b7c5e', '#5a4d3a', '#6b8db5', '#8b6b4a', '#5a7a5a', '#4a6b8a']
 
+const sidebarAllTotal = computed(() => {
+  if (dashboardStats.value?.totalDocs !== undefined) return dashboardStats.value.totalDocs
+  return allTotal.value
+})
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
 const stats = computed(() => {
@@ -454,6 +459,7 @@ function clearFilters() {
   page.value = 1
   loadDocuments()
   loadFeatured()
+  loadAllTotal()
 }
 
 async function toggleFavorites() {
@@ -465,6 +471,7 @@ async function toggleFavorites() {
     await loadFavorites()
   } else {
     await loadDocuments()
+    loadAllTotal()
   }
 }
 
@@ -488,6 +495,13 @@ async function loadDocuments() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadAllTotal() {
+  try {
+    const { data } = await listDocs({ page: 1, pageSize: 1 })
+    allTotal.value = data.total
+  } catch { /* empty */ }
 }
 
 async function loadFavorites() {
@@ -521,26 +535,42 @@ async function handleFavorite(doc: DocItem) {
     const { data } = await favoriteApi.toggle(doc.id)
     doc.isFavorited = data.favorited
     loadFavTotal()
-  } catch { /* ignore */ }
+  } catch { /* empty */ }
 }
 
 async function loadFavTotal() {
   try {
     const { data } = await favoriteApi.list(1, 1)
     favTotal.value = data.total
-  } catch { /* ignore */ }
+  } catch { /* empty */ }
 }
 
 function openDoc(doc: DocItem) {
-  if (doc.file_url) {
+  if (doc.file_type?.toLowerCase() === 'txt' || doc.file_type?.toLowerCase() === 'plain') {
+    router.push(`/docs/${doc.id}`)
+  } else if (doc.file_url) {
     window.open(doc.file_url, '_blank')
   }
 }
 
-function onUploadClose() {
+async function loadStats() {
+  try {
+    const { data: statsData } = await getStats()
+    dashboardStats.value = statsData
+  } catch { /* empty */ }
+}
+
+async function onUploadClose() {
   showUpload.value = false
-  loadDocuments()
+  await loadDocuments()
   loadFeatured()
+  loadFavTotal()
+  loadAllTotal()
+  await loadStats()
+  try {
+    const { data: catData } = await getCategories()
+    categories.value = catData
+  } catch { /* empty */ }
 }
 
 function handleLogout() {
@@ -579,22 +609,20 @@ onMounted(async () => {
   try {
     const { data: catData } = await getCategories()
     categories.value = catData
-  } catch { /* ignore */ }
+  } catch { /* empty */ }
   try {
     const { data: tagData } = await getTags()
     tags.value = tagData
-  } catch { /* ignore */ }
-  try {
-    const { data: statsData } = await getStats()
-    dashboardStats.value = statsData
-  } catch { /* ignore */ }
+  } catch { /* empty */ }
+  await loadStats()
   await loadDocuments()
+  loadAllTotal()
   await loadFeatured()
   if (authStore.isAuthenticated) {
     loadFavTotal()
   }
-})
 
+})
 onBeforeUnmount(() => {
   document.removeEventListener('click', onClickOutside)
 })
