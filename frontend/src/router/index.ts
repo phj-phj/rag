@@ -10,9 +10,21 @@ const router = createRouter({
       component: () => import('../views/DocumentLibrary.vue'),
     },
     {
+      path: '/recent',
+      name: 'RecentDocs',
+      component: () => import('../views/RecentDocs.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/login',
       name: 'Login',
       component: () => import('../views/auth/Login.vue'),
+      meta: { guest: true },
+    },
+    {
+      path: '/register',
+      name: 'Register',
+      component: () => import('../views/auth/Register.vue'),
       meta: { guest: true },
     },
     {

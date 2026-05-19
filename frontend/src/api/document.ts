@@ -23,6 +23,10 @@ export function create(formData: FormData) {
   })
 }
 
+export function getContent(id: number) {
+  return client.get(`/documents/${id}/content`)
+}
+
 export function deleteDoc(id: number) {
   return client.delete(`/documents/${id}`)
 }

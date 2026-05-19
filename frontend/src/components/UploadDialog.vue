@@ -5,7 +5,7 @@
       class="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
       @click.self="$emit('close')"
     >
-      <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div class="upload-dialog-inner bg-white rounded-xl shadow-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <h3 class="text-lg font-semibold mb-4">
           上传文档
         </h3>
@@ -23,7 +23,7 @@
             拖拽文件到此区域或点击选择
           </p>
           <p class="text-xs text-gray-300">
-            支持 PDF、Word、PPT、Excel、TXT、图片（单文件最大 10MB，最多 10 个文件）
+            支持 PDF、Word、TXT、图片PNG/JPG/GIF/WebP/BMP（单文件最大 10MB，最多 10 个文件）
           </p>
         </div>
 
@@ -32,7 +32,7 @@
           type="file"
           multiple
           class="hidden"
-          accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.gif"
+          accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.gif,.webp,.bmp"
           @change="handleFileChange"
         >
 
@@ -161,21 +161,28 @@ function handleDrop(event: DragEvent) {
 }
 
 function addFiles(fileList: FileList | null) {
-  if (!fileList) return
+  if (!fileList || fileList.length === 0) return
   error.value = ''
 
-  for (let i = 0; i < fileList.length; i++) {
-    const file = fileList[i]
-    if (files.value.length >= 10) {
-      error.value = '最多上传 10 个文件'
-      return
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      error.value = `文件 ${file.name} 超过 10MB 限制`
-      return
-    }
-    files.value.push(file)
+  const incoming = Array.from(fileList)
+  const remaining = 10 - files.value.length
+
+  // Check total limit
+  if (incoming.length > remaining) {
+    error.value = `最多上传 10 个文件，当前已有 ${files.value.length} 个，还能添加 ${remaining} 个`
+    return
   }
+
+  // Check each file size
+  const oversized = incoming.filter((f) => f.size > 10 * 1024 * 1024)
+  if (oversized.length > 0) {
+    const names = oversized.map((f) => f.name).join('、')
+    error.value = `以下文件超过 10MB 限制：${names}`
+    return
+  }
+
+  // All clear — batch add
+  files.value.push(...incoming)
 }
 
 function removeFile(idx: number) {
@@ -225,3 +232,13 @@ onMounted(async () => {
   } catch { /* ignore */ }
 })
 </script>
+
+<style scoped>
+@media (max-width: 640px) {
+  .upload-dialog-inner {
+    margin: 0 8px;
+    padding: 16px !important;
+    max-height: 85vh;
+  }
+}
+</style>

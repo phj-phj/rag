@@ -9,13 +9,13 @@
           Papier
         </h1>
         <p class="text-gray-500 mt-2">
-          团队文档管理平台
+          创建账号
         </p>
       </div>
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
         <h2 class="text-xl font-semibold mb-6">
-          登录
+          注册
         </h2>
 
         <div
@@ -27,15 +27,15 @@
 
         <form
           class="space-y-4"
-          @submit.prevent="handleLogin"
+          @submit.prevent="handleRegister"
         >
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
             <input
               v-model="username"
               type="text"
-              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-              placeholder="请输入用户名"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-colors"
+              placeholder="3-50个字符"
               required
             >
           </div>
@@ -45,8 +45,19 @@
             <input
               v-model="password"
               type="password"
-              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-              placeholder="请输入密码"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-colors"
+              placeholder="至少6位"
+              required
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">确认密码</label>
+            <input
+              v-model="confirmPassword"
+              type="password"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-colors"
+              placeholder="再次输入密码"
               required
             >
           </div>
@@ -57,17 +68,17 @@
             class="w-full py-2.5 px-4 rounded-lg text-white font-medium transition-colors disabled:opacity-50"
             style="background-color: #2c3e50;"
           >
-            {{ loading ? '登录中...' : '登录' }}
+            {{ loading ? '注册中...' : '注册' }}
           </button>
         </form>
 
         <p class="mt-4 text-center text-sm text-gray-400">
-          没有账号？
+          已有账号？
           <router-link
-            to="/register"
+            to="/login"
             class="text-amber-600 hover:text-amber-700 font-medium"
           >
-            去注册
+            去登录
           </router-link>
         </p>
       </div>
@@ -78,24 +89,38 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../../stores/auth'
+import { register } from '../../api/auth'
 
 const router = useRouter()
-const authStore = useAuthStore()
 
 const username = ref('')
 const password = ref('')
+const confirmPassword = ref('')
 const loading = ref(false)
 const error = ref('')
 
-async function handleLogin() {
+async function handleRegister() {
   error.value = ''
+
+  if (password.value !== confirmPassword.value) {
+    error.value = '两次密码输入不一致'
+    return
+  }
+
+  if (password.value.length < 6) {
+    error.value = '密码长度不能少于6位'
+    return
+  }
+
   loading.value = true
   try {
-    await authStore.login(username.value, password.value)
-    router.push(authStore.isAdmin ? '/admin' : '/')
+    const { data } = await register(username.value, password.value)
+    localStorage.setItem('token', data.token)
+    localStorage.setItem('user', JSON.stringify(data.user))
+    router.push('/')
+    location.reload()
   } catch (err: unknown) {
-    error.value = (err as { response?: { data?: { message?: string } } }).response?.data?.message || '登录失败，请重试'
+    error.value = (err as { response?: { data?: { message?: string } } }).response?.data?.message || '注册失败，请重试'
   } finally {
     loading.value = false
   }

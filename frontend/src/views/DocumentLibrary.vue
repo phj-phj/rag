@@ -5,6 +5,12 @@
       <div class="logo">
         Pap<em>ier</em>
       </div>
+      <button
+        class="hamburger"
+        @click="mobileMenuOpen = !mobileMenuOpen"
+      >
+        <span /><span /><span />
+      </button>
       <ul class="top-nav">
         <li>
           <router-link
@@ -15,7 +21,11 @@
           </router-link>
         </li>
         <li><a href="#">集合</a></li>
-        <li><a href="#">最近</a></li>
+        <li>
+          <router-link to="/recent">
+            最近
+          </router-link>
+        </li>
         <li><a href="#">共享给我</a></li>
         <li><a href="#">每日训练</a></li>
       </ul>
@@ -108,8 +118,74 @@
       </div>
     </header>
 
+    <!-- Mobile Nav Overlay -->
+    <Transition name="slide-down">
+      <div
+        v-if="mobileMenuOpen"
+        class="mobile-nav-overlay"
+        @click="mobileMenuOpen = false"
+      >
+        <nav
+          class="mobile-nav-panel"
+          @click.stop
+        >
+          <router-link
+            to="/"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >
+            文档库
+          </router-link>
+          <a
+            href="#"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >集合</a>
+          <router-link
+            to="/recent"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >
+            最近
+          </router-link>
+          <a
+            href="#"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >共享给我</a>
+          <a
+            href="#"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >每日训练</a>
+          <button
+            v-if="!authStore.isAuthenticated"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false; $router.push('/login')"
+          >
+            登录
+          </button>
+        </nav>
+      </div>
+    </Transition>
+
     <!-- SIDEBAR -->
-    <nav class="sidebar">
+    <button
+      class="sidebar-toggle"
+      @click="mobileSidebarOpen = !mobileSidebarOpen"
+    >
+      <span /><span /><span />
+    </button>
+    <nav
+      class="sidebar"
+      :class="{ 'sidebar--open': mobileSidebarOpen }"
+    >
+      <button
+        class="sidebar-close"
+        @click="mobileSidebarOpen = false"
+      >
+        ✕
+      </button>
       <div class="sidebar-section">
         <div class="sidebar-title">
           浏览
@@ -401,6 +477,9 @@ const loading = ref(false)
 const showFavorites = ref(false)
 const showUpload = ref(false)
 const showLogout = ref(false)
+const mobileMenuOpen = ref(false)
+const mobileSidebarOpen = ref(false)
+const isMobile = ref(false)
 
 const filters = reactive({
   title: '',
@@ -546,7 +625,9 @@ async function loadFavTotal() {
 }
 
 function openDoc(doc: DocItem) {
-  if (doc.file_type?.toLowerCase() === 'txt' || doc.file_type?.toLowerCase() === 'plain') {
+  const viewableTypes = ['txt', 'plain', 'pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico']
+  const t = doc.file_type?.toLowerCase() || ''
+  if (viewableTypes.includes(t)) {
     router.push(`/docs/${doc.id}`)
   } else if (doc.file_url) {
     window.open(doc.file_url, '_blank')
@@ -604,8 +685,19 @@ function avatarColor(name: string): string {
   return colors[name.charCodeAt(0) % colors.length]
 }
 
+function handleResize() {
+  const mobile = window.innerWidth < 900
+  isMobile.value = mobile
+  if (!mobile) {
+    mobileMenuOpen.value = false
+    mobileSidebarOpen.value = false
+  }
+}
+
 onMounted(async () => {
   document.addEventListener('click', onClickOutside)
+  window.addEventListener('resize', handleResize)
+  handleResize()
   try {
     const { data: catData } = await getCategories()
     categories.value = catData
@@ -625,6 +717,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   document.removeEventListener('click', onClickOutside)
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 
@@ -1205,8 +1298,6 @@ onBeforeUnmount(() => {
 
 .doc-type.pdf { background: rgba(122, 59, 59, 0.08); color: var(--burgundy); }
 .doc-type.doc, .doc-type.docx { background: rgba(107, 124, 94, 0.1); color: var(--sage); }
-.doc-type.ppt, .doc-type.pptx { background: rgba(196, 135, 59, 0.1); color: var(--amber-deep); }
-.doc-type.xls, .doc-type.xlsx, .doc-type.sheet { background: rgba(44, 36, 24, 0.06); color: var(--ink-light); }
 .doc-type.txt { background: rgba(107, 141, 181, 0.1); color: #6b8db5; }
 .doc-type.jpg, .doc-type.jpeg, .doc-type.png, .doc-type.gif { background: rgba(107, 124, 94, 0.1); color: var(--sage); }
 
@@ -1295,10 +1386,147 @@ onBeforeUnmount(() => {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* RESPONSIVE */
+/* ── HAMBURGER ── */
+.hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  margin-right: 8px;
+}
+.hamburger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--parchment);
+  border-radius: 1px;
+  transition: all 0.25s;
+}
+
+/* ── MOBILE NAV OVERLAY ── */
+.mobile-nav-overlay {
+  position: fixed;
+  inset: 0;
+  top: var(--topbar-h);
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 150;
+}
+.mobile-nav-panel {
+  background: var(--ink);
+  padding: 8px 0;
+}
+.mobile-nav-link {
+  display: block;
+  padding: 14px 24px;
+  color: var(--warm-gray);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mobile-nav-link:hover {
+  color: var(--parchment);
+  background: rgba(196, 135, 59, 0.12);
+}
+
+/* ── SLIDE ANIMATIONS ── */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* ── SIDEBAR TOGGLE ── */
+.sidebar-toggle {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 130;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--amber);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(196, 135, 59, 0.35);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.sidebar-toggle span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: #fff;
+  border-radius: 1px;
+}
+.sidebar-close {
+  display: none;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--parchment);
+  font-size: 1rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── RESPONSIVE ── */
 @media (max-width: 900px) {
-  .sidebar { display: none; }
+  .hamburger { display: flex; }
+  .top-nav { display: none; }
+  .search-box input { width: 140px; }
+  .search-box input:focus { width: 200px; }
+  .sidebar {
+    display: flex;
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    bottom: 0;
+    z-index: 140;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  .sidebar--open { transform: translateX(0); }
+  .sidebar-close { display: flex; }
+  .sidebar-toggle { display: flex; }
   .main { margin-left: 0; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
+  .doc-grid { grid-template-columns: 1fr; }
+  .featured { padding: 32px 24px; }
+  .featured h2 { font-size: 1.2rem; }
+}
+
+@media (max-width: 640px) {
+  .topbar-inner { padding: 0 16px; }
+  .stats-row { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 1.25rem; }
+  .page-header { padding: 20px 16px 16px; }
+  .main-content { padding: 0 8px 40px; }
+  .btn-upload { padding: 8px 16px; font-size: 0.8rem; }
+  .btn-admin { display: none; }
+  .logo { font-size: 1.1rem; }
 }
 </style>

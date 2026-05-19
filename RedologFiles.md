@@ -205,3 +205,60 @@
 - `files-preview.html`：文档库页面的前端设计稿（网格/列表视图切换）
 - `txt-viewer-preview.html`：TXT 阅读器的前端设计稿（编辑风格）
 - `file-viewer-preview.html`：文件详情页的早期设计稿
+
+## 2026-05-19
+
+### 文件上传与解析增强
+
+- **移除 PPT/Excel 支持**：
+  - 后端 `upload.ts`：移除 4 个 PPT/Excel MIME 类型和 EXT_MAP 映射
+  - 前端 `UploadDialog.vue`：移除 accept 属性中的 `.ppt/.pptx/.xls/.xlsx`，更新提示文字
+  - `DocumentLibrary.vue` / `AdminDashboard.vue`：删除 PPT/Excel 的 CSS 样式和 TAG_STYLES
+
+- **修复 Word 文件上传 bug**：
+  - `document.controller.ts`：`file_type` 从 `file.mimetype.split('/')[1]` 改为 `path.extname(file.filename).slice(1)`
+  - 根因：MIME 子类型解析对 Word 文档产生错误值（`application/msword` → `"msword"` 而非 `"doc"`）
+
+- **文本提取服务**（新文件 `backend/src/services/extraction.service.ts`）：
+  - PDF 文字提取：`unpdf.extractText`
+  - PDF 内嵌图片提取：`unpdf.extractImages` → base64（简历等含照片的文档可展示图片）
+  - DOCX 文字提取：JSZip + XML 解析 `word/document.xml`
+  - DOCX 内嵌图片提取：JSZip 解压 `word/media/` → base64
+  - 依赖：`unpdf`、`jszip`
+
+- **图片格式扩展**：后端 ALLOWED_TYPES 新增 `image/webp`、`image/bmp`
+
+- **文档内容 API**：`GET /api/documents/:id/content` — 返回 `{ text, file_type, images }`
+
+- **前端上传校验增强**：`UploadDialog.vue` 的 `addFiles()` 改为先验后加（预扫描全部文件，超量/超大列出具体文件名）
+
+- **DocViewer 多文件类型支持**：
+  - `fileTypeCategory` computed 支持 txt/pdf/word/image/unsupported 五类
+  - PDF/Word：文字 + 内嵌图片展示
+  - 图片：原生 `<img>` 展示
+  - `DocumentLibrary.vue` 的 `openDoc()` 将所有可预览类型路由到 DocViewer
+
+### 全站响应式适配
+
+- **DocumentLibrary.vue**：汉堡菜单（900px 断点）、移动导航覆盖层（slide-down 动画）、侧边栏 FAB 切换按钮（圆形浮动按钮，640px 显示）、侧边栏滑入/关闭、resize 自动适配
+- **DocViewer.vue**：768px / 640px 双断点，内边距/字号/嵌入图片尺寸递减
+- **UploadDialog.vue**：640px 弹窗边距收紧
+- **Login.vue**：`mx-4` 防止小屏贴边
+- **AdminLayout.vue**：768px 隐藏侧边栏
+
+### 用户注册功能
+
+- **后端**：`auth.controller.ts` 新增 `register()` — 用户名/密码校验、唯一性检查、bcrypt 哈希、注册即签发 JWT 自动登录
+- **路由**：`POST /api/auth/register`
+- **前端**：新页面 `Register.vue`（用户名+密码+确认密码、客户端校验、成功后自动登录跳转）、Login.vue 添加"去注册"链接
+
+### "最近文档"页面
+
+- **后端**：`document.controller.ts` 的 `list()` 新增 `uploader_id` 查询参数支持
+- **前端**：新页面 `RecentDocs.vue` — 仅展示当前用户上传的文档，全宽布局无侧边栏，含搜索/空状态/分页/响应式
+- **路由**：`/recent`（`requiresAuth: true`）
+- DocumentLibrary 桌面+移动端"最近"链接改为 `<router-link to="/recent">`
+
+### HTML 预览文件
+
+- `recent-preview.html`："最近文档"页面的前端设计稿（与 DocumentLibrary 一致的深棕顶栏+琥珀色系）

@@ -1,7 +1,10 @@
 import { Request, Response } from 'express'
+import path from 'path'
+import fs from 'fs/promises'
 import { Op } from 'sequelize'
 import { Document, Category, Tag, User } from '../models'
 import { deleteFile, getFileUrl } from '../services/file.service'
+import { extractPdfText, extractPdfImages, extractDocxText, extractDocxImages } from '../services/extraction.service'
 
 function docToJson(doc: Document): Record<string, unknown> {
   const d = (doc.toJSON() as unknown) as Record<string, unknown>
@@ -12,9 +15,13 @@ function docToJson(doc: Document): Record<string, unknown> {
 export async function list(req: Request, res: Response): Promise<void> {
   const page = Math.max(1, Number(req.query.page) || 1)
   const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20))
-  const { title, category_id, tags, is_featured } = req.query
+  const { title, category_id, tags, is_featured, uploader_id } = req.query
 
   const where: Record<string, unknown> = {}
+
+  if (uploader_id) {
+    where.uploader_id = Number(uploader_id)
+  }
 
   if (title && typeof title === 'string') {
     where.title = { [Op.like]: `%${title}%` }
@@ -121,7 +128,7 @@ export async function create(req: Request, res: Response): Promise<void> {
 
     const doc = await Document.create({
       title,
-      file_type: file.mimetype.split('/')[1] || 'unknown',
+      file_type: path.extname(file.filename).slice(1) || 'unknown',
       file_size: file.size,
       file_path: `uploads/${file.filename}`,
       uploader_id: req.user!.id,
@@ -164,4 +171,41 @@ export async function remove(req: Request, res: Response): Promise<void> {
   await doc.destroy()
 
   res.json({ message: '文档已删除' })
+}
+
+export async function getContent(req: Request, res: Response): Promise<void> {
+  const doc = await Document.findByPk(Number(req.params.id))
+  if (!doc) {
+    res.status(404).json({ message: '文档不存在' })
+    return
+  }
+
+  const fullPath = path.resolve(__dirname, '../../', doc.file_path)
+  const ext = path.extname(doc.file_path).toLowerCase()
+  const type = doc.file_type?.toLowerCase() || ext.slice(1)
+
+  try {
+    let text = ''
+    let images: string[] = []
+
+    if (type === 'txt' || type === 'plain') {
+      text = await fs.readFile(fullPath, 'utf-8')
+    } else if (type === 'pdf') {
+      text = await extractPdfText(fullPath)
+      images = await extractPdfImages(fullPath)
+    } else if (type === 'docx' || type === 'doc') {
+      text = await extractDocxText(fullPath)
+      images = await extractDocxImages(fullPath)
+    } else if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'tif'].includes(type)) {
+      text = '' // 图片直接展示，不做 OCR 文字提取
+    } else {
+      res.status(400).json({ message: '不支持的文件类型' })
+      return
+    }
+
+    res.json({ text, file_type: type, images })
+  } catch (err) {
+    console.error('内容提取失败:', err)
+    res.status(500).json({ message: '文件内容提取失败' })
+  }
 }

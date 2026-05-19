@@ -70,3 +70,9 @@ function handleLogout() {
   router.push('/login')
 }
 </script>
+
+<style scoped>
+@media (max-width: 768px) {
+  aside { display: none; }
+}
+</style>

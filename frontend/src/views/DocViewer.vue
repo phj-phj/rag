@@ -123,15 +123,40 @@
           </div>
         </header>
 
-        <!-- TXT Content -->
+        <!-- Text-based Content (TXT / PDF / Word) -->
         <div
-          v-if="isTxt"
+          v-if="fileTypeCategory === 'txt' || fileTypeCategory === 'pdf' || fileTypeCategory === 'word'"
           class="article-body"
         >
-          <pre class="txt-content">{{ rawContent }}</pre>
+          <!-- Embedded images from PDF / DOCX -->
+          <div
+            v-if="embeddedImages.length > 0"
+            class="embedded-images"
+          >
+            <img
+              v-for="(img, idx) in embeddedImages"
+              :key="idx"
+              :src="img"
+              class="embedded-image"
+              :alt="`${doc.title} - 内嵌图片 ${idx + 1}`"
+            >
+          </div>
+          <pre class="txt-content">{{ rawContent || '（文件内容为空）' }}</pre>
         </div>
 
-        <!-- Non-TXT -->
+        <!-- Image Content -->
+        <div
+          v-else-if="fileTypeCategory === 'image'"
+          class="article-body image-body"
+        >
+          <img
+            :src="fileDownloadUrl"
+            :alt="doc.title"
+            class="preview-image"
+          >
+        </div>
+
+        <!-- Unsupported -->
         <div
           v-else
           class="unsupported-body"
@@ -210,7 +235,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { getById } from '../api/document'
+import { getById, getContent } from '../api/document'
 
 interface DocData {
   id: number
@@ -229,6 +254,7 @@ const authStore = useAuthStore()
 
 const doc = ref<DocData | null>(null)
 const rawContent = ref('')
+const embeddedImages = ref<string[]>([])
 const loading = ref(true)
 const error = ref('')
 const showLogout = ref(false)
@@ -240,9 +266,15 @@ const fileDownloadUrl = computed(() => {
   return `${BASE}${doc.value.file_url}`
 })
 
-const isTxt = computed(() => {
-  const t = doc.value?.file_type?.toLowerCase()
-  return t === 'txt' || t === 'plain'
+const IMAGE_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif'])
+
+const fileTypeCategory = computed(() => {
+  const t = doc.value?.file_type?.toLowerCase() || ''
+  if (t === 'txt' || t === 'plain') return 'txt'
+  if (t === 'pdf') return 'pdf'
+  if (t === 'docx' || t === 'doc') return 'word'
+  if (IMAGE_TYPES.has(t)) return 'image'
+  return 'unsupported'
 })
 
 function formatSize(bytes: number): string {
@@ -268,13 +300,17 @@ async function fetchDoc() {
     const { data } = await getById(id)
     doc.value = data as DocData
 
-    if (
-      (data.file_type?.toLowerCase() === 'txt' || data.file_type?.toLowerCase() === 'plain') &&
-      data.file_url
-    ) {
-      const res = await fetch(`${BASE}${data.file_url}`)
-      if (res.ok) {
-        rawContent.value = await res.text()
+    const type = data.file_type?.toLowerCase() || ''
+    const supportedTypes = ['txt', 'plain', 'pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif']
+
+    if (supportedTypes.includes(type)) {
+      try {
+        const { data: contentData } = await getContent(id)
+        rawContent.value = contentData.text || ''
+        embeddedImages.value = contentData.images || []
+      } catch {
+        rawContent.value = ''
+        embeddedImages.value = []
       }
     }
   } catch (e: unknown) {
@@ -645,6 +681,36 @@ onBeforeUnmount(() => {
   color: #9c9488;
 }
 
+/* ── Embedded Images ── */
+.embedded-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #e8e2d7;
+}
+.embedded-image {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 6px;
+  border: 1px solid #e8e2d7;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  object-fit: contain;
+}
+
+/* ── Image Preview ── */
+.image-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.preview-image {
+  max-width: 100%;
+  max-height: 600px;
+  border-radius: 8px;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
+}
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .topbar-inner {
@@ -660,8 +726,34 @@ onBeforeUnmount(() => {
     padding-left: 28px;
     padding-right: 28px;
   }
-  .article-title {
-    font-size: 1.35rem;
+  .article-header { padding-top: 36px; }
+  .article-header::after { left: 28px; }
+  .article-title { font-size: 1.35rem; }
+  .byline { flex-wrap: wrap; gap: 8px; }
+  .embedded-images { gap: 12px; margin-bottom: 24px; }
+  .embedded-image { max-height: 300px; }
+}
+
+@media (max-width: 640px) {
+  .topbar-inner { padding: 0 14px; height: 48px; }
+  .reader-wrapper { padding: 16px 8px 32px; }
+  .article-header,
+  .article-body,
+  .reader-footer,
+  .unsupported-body {
+    padding-left: 18px;
+    padding-right: 18px;
   }
+  .article-header { padding-top: 28px; padding-bottom: 28px; }
+  .article-header::after { left: 18px; width: 36px; }
+  .article-title { font-size: 1.15rem; }
+  .kicker { gap: 6px; margin-bottom: 14px; }
+  .badge { font-size: 0.6rem; padding: 3px 8px; }
+  .txt-content { font-size: 0.82rem; }
+  .btn-ghost { padding: 6px 12px; font-size: 0.75rem; }
+  .logo { font-size: 1.1rem; }
+  .embedded-images { gap: 8px; }
+  .embedded-image { max-height: 250px; }
+  .preview-image { max-height: 400px; }
 }
 </style>
