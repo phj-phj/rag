@@ -1,15 +1,8 @@
 import client from './client'
 
-export interface DocumentListParams {
-  page?: number
-  pageSize?: number
-  title?: string
-  category_id?: number | null
-  tags?: string
-  is_featured?: string
-}
+export type { DocumentListParams } from '../types/api'
 
-export function list(params?: DocumentListParams) {
+export function list(params?: import('../types/api').DocumentListParams) {
   return client.get('/documents', { params })
 }
 

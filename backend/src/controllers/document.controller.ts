@@ -4,7 +4,7 @@ import fs from 'fs/promises'
 import { Op } from 'sequelize'
 import { Document, Category, Tag, User } from '../models'
 import { deleteFile, getFileUrl } from '../services/file.service'
-import { extractPdfText, extractPdfImages, extractDocxText, extractDocxImages } from '../services/extraction.service'
+import { extractDocxText, extractDocxImages, extractDocxHtml, extractPdfText, extractPdfHtml, cleanText } from '../services/extraction.service'
 
 function docToJson(doc: Document): Record<string, unknown> {
   const d = (doc.toJSON() as unknown) as Record<string, unknown>
@@ -186,24 +186,26 @@ export async function getContent(req: Request, res: Response): Promise<void> {
 
   try {
     let text = ''
+    let html = ''
     let images: string[] = []
 
     if (type === 'txt' || type === 'plain') {
-      text = await fs.readFile(fullPath, 'utf-8')
+      text = cleanText(await fs.readFile(fullPath, 'utf-8'))
     } else if (type === 'pdf') {
+      html = await extractPdfHtml(fullPath)
       text = await extractPdfText(fullPath)
-      images = await extractPdfImages(fullPath)
     } else if (type === 'docx' || type === 'doc') {
-      text = await extractDocxText(fullPath)
+      html = await extractDocxHtml(fullPath)
       images = await extractDocxImages(fullPath)
+      text = await extractDocxText(fullPath) // AI 问答仍需文字
     } else if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'tif'].includes(type)) {
-      text = '' // 图片直接展示，不做 OCR 文字提取
+      text = '' // 图片直接展示
     } else {
       res.status(400).json({ message: '不支持的文件类型' })
       return
     }
 
-    res.json({ text, file_type: type, images })
+    res.json({ text, html, file_type: type, images })
   } catch (err) {
     console.error('内容提取失败:', err)
     res.status(500).json({ message: '文件内容提取失败' })

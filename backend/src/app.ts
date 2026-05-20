@@ -10,6 +10,7 @@ import favoriteRoutes from './routes/favorite.routes'
 import adminRoutes from './routes/admin.routes'
 import categoryRoutes from './routes/category.routes'
 import tagRoutes from './routes/tag.routes'
+import chatRoutes from './routes/chat.routes'
 
 dotenv.config()
 
@@ -30,6 +31,7 @@ app.use('/api/favorites', favoriteRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/categories', categoryRoutes)
 app.use('/api/tags', tagRoutes)
+app.use('/api/chat', chatRoutes)
 
 app.get('/', (_req, res) => {
   res.json({ message: 'Papier API 服务运行中' })

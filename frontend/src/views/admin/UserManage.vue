@@ -396,8 +396,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAdminStore } from '../../stores/admin'
 import { useAuthStore } from '../../stores/auth'
-
-interface UserItem { id: number; username: string; role: string; document_count: number; created_at: string }
+import type { UserItem } from '../../types/api'
 
 const router = useRouter()
 const adminStore = useAdminStore()

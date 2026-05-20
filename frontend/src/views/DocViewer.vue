@@ -123,14 +123,69 @@
           </div>
         </header>
 
-        <!-- Text-based Content (TXT / PDF / Word) -->
+        <!-- PDF: pdfjs-dist continuous scroll -->
         <div
-          v-if="fileTypeCategory === 'txt' || fileTypeCategory === 'pdf' || fileTypeCategory === 'word'"
+          v-if="fileTypeCategory === 'pdf'"
           class="article-body"
         >
-          <!-- Embedded images from PDF / DOCX -->
           <div
-            v-if="embeddedImages.length > 0"
+            v-if="pdfLoading"
+            class="pdf-status"
+          >
+            加载 PDF 中...
+          </div>
+          <div
+            v-else-if="pdfError"
+            class="pdf-status pdf-status-error"
+          >
+            {{ pdfError }}
+          </div>
+
+          <div
+            v-if="!pdfLoading && !pdfError"
+            class="pdf-toolbar"
+          >
+            <button
+              :disabled="pdfScale <= 0.5"
+              @click="setScale(-0.25)"
+            >
+              -
+            </button>
+            <span>{{ Math.round(pdfScale * 100) }}%</span>
+            <button
+              :disabled="pdfScale >= 3"
+              @click="setScale(+0.25)"
+            >
+              +
+            </button>
+          </div>
+
+          <div
+            ref="pdfContainerRef"
+            class="pdf-scroll-container"
+          />
+
+          <div class="pdf-native-link">
+            <a
+              :href="fileDownloadUrl"
+              target="_blank"
+              class="btn-ghost"
+            >在原生 PDF 查看器中打开</a>
+          </div>
+        </div>
+
+        <!-- Word: HTML rendering -->
+        <div
+          v-else-if="fileTypeCategory === 'word'"
+          class="article-body"
+        >
+          <div
+            v-if="docHtml"
+            class="docx-html"
+            v-html="docHtml"
+          />
+          <div
+            v-else-if="embeddedImages.length > 0"
             class="embedded-images"
           >
             <img
@@ -141,6 +196,17 @@
               :alt="`${doc.title} - 内嵌图片 ${idx + 1}`"
             >
           </div>
+          <pre
+            v-else
+            class="txt-content"
+          >{{ rawContent || '（文件内容为空）' }}</pre>
+        </div>
+
+        <!-- Text-based Content (TXT) -->
+        <div
+          v-else-if="fileTypeCategory === 'txt'"
+          class="article-body"
+        >
           <pre class="txt-content">{{ rawContent || '（文件内容为空）' }}</pre>
         </div>
 
@@ -232,32 +298,130 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { getById, getContent } from '../api/document'
+import * as pdfjsLib from 'pdfjs-dist'
+import type { DocItem } from '../types/api'
 
-interface DocData {
-  id: number
-  title: string
-  file_type: string
-  file_size: number
-  file_url?: string
-  created_at: string
-  uploader?: { username: string }
-  category?: { name: string }
+// pdfjs-dist 5.x 依赖 Chrome 专有的 Map.prototype.getOrInsertComputed
+if (!(Map.prototype as unknown as Record<string, unknown>).getOrInsertComputed) {
+  ;(Map.prototype as unknown as Record<string, unknown>).getOrInsertComputed = function (key: unknown, compute: () => unknown) {
+    if (this.has(key)) return this.get(key)
+    const value = compute()
+    this.set(key, value)
+    return value
+  }
 }
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url,
+).toString()
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
-const doc = ref<DocData | null>(null)
+const doc = ref<DocItem | null>(null)
 const rawContent = ref('')
+const docHtml = ref('')
 const embeddedImages = ref<string[]>([])
 const loading = ref(true)
 const error = ref('')
 const showLogout = ref(false)
+
+// ── PDF rendering state ──
+const pdfContainerRef = ref<HTMLDivElement | null>(null)
+const pdfTotalPages = ref(0)
+const pdfScale = ref(1)
+const pdfLoading = ref(false)
+const pdfError = ref('')
+let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null
+
+async function loadPdf(url: string) {
+  pdfLoading.value = true
+  pdfError.value = ''
+  if (pdfDoc) { pdfDoc.destroy(); pdfDoc = null }
+  pdfTotalPages.value = 0
+  pdfScale.value = 1
+
+  console.log('[PDF] 开始加载:', url)
+  if (!url) {
+    pdfError.value = 'PDF 文件地址为空，无法加载'
+    pdfLoading.value = false
+    return
+  }
+
+  try {
+    const loadingTask = pdfjsLib.getDocument(url)
+    pdfDoc = await loadingTask.promise
+    console.log('[PDF] 文档加载成功, 页数:', pdfDoc.numPages)
+    pdfTotalPages.value = pdfDoc.numPages
+    pdfLoading.value = false
+  } catch (e: unknown) {
+    const msg = `PDF 加载失败：${(e as Error).message || '未知错误'}`
+    console.error('[PDF]', msg, e)
+    pdfError.value = msg
+    pdfLoading.value = false
+  }
+}
+
+async function renderAllPages() {
+  const container = pdfContainerRef.value
+  if (!pdfDoc || !container) {
+    console.log('[PDF] renderAllPages 跳过: pdfDoc=' + !!pdfDoc + ' container=' + !!pdfContainerRef.value)
+    return
+  }
+
+  container.innerHTML = ''
+  const containerWidth = container.clientWidth || 700
+  const dpr = window.devicePixelRatio || 1
+  console.log('[PDF] renderAllPages: 总页数=' + pdfTotalPages.value + ' containerWidth=' + containerWidth + ' dpr=' + dpr)
+
+  let renderedCount = 0
+  for (let i = 1; i <= pdfTotalPages.value; i++) {
+    try {
+      const page = await pdfDoc.getPage(i)
+      const viewport = page.getViewport({ scale: 1 })
+      const scale = pdfScale.value * Math.min(1, (containerWidth - 32) / viewport.width)
+      const scaledViewport = page.getViewport({ scale: scale * dpr })
+
+      const wrapper = document.createElement('div')
+      wrapper.className = 'pdf-page-wrapper'
+
+      const canvas = document.createElement('canvas')
+      canvas.width = scaledViewport.width
+      canvas.height = scaledViewport.height
+      canvas.style.width = (scaledViewport.width / dpr) + 'px'
+      canvas.style.height = (scaledViewport.height / dpr) + 'px'
+
+      const num = document.createElement('span')
+      num.className = 'pdf-page-num'
+      num.textContent = String(i)
+
+      wrapper.appendChild(canvas)
+      wrapper.appendChild(num)
+      container.appendChild(wrapper)
+
+      const ctx = canvas.getContext('2d')
+      if (!ctx) continue
+      await page.render({ canvas, viewport: scaledViewport, canvasContext: ctx }).promise
+      renderedCount++
+
+      if (i <= 3) console.log('[PDF] 第' + i + '页: canvas=' + canvas.width + 'x' + canvas.height)
+    } catch (e) {
+      console.error('[PDF] 第' + i + '页失败:', e)
+    }
+  }
+  console.log('[PDF] renderAllPages 完成, 渲染了 ' + renderedCount + ' 页')
+}
+
+function setScale(delta: number) {
+  pdfScale.value = Math.max(0.5, Math.min(3, pdfScale.value + delta))
+  nextTick(() => renderAllPages())
+}
 
 const BASE = 'http://localhost:3000'
 
@@ -298,19 +462,27 @@ async function fetchDoc() {
     if (!id) throw new Error('无效的文档ID')
 
     const { data } = await getById(id)
-    doc.value = data as DocData
+    doc.value = data as DocItem
 
     const type = data.file_type?.toLowerCase() || ''
-    const supportedTypes = ['txt', 'plain', 'pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif']
+    const contentTypes = ['txt', 'plain', 'doc', 'docx']
+    const imageTypes = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif']
+    const viewableTypes = ['pdf', ...contentTypes, ...imageTypes]
 
-    if (supportedTypes.includes(type)) {
-      try {
-        const { data: contentData } = await getContent(id)
-        rawContent.value = contentData.text || ''
-        embeddedImages.value = contentData.images || []
-      } catch {
-        rawContent.value = ''
-        embeddedImages.value = []
+    if (viewableTypes.includes(type)) {
+      if (type === 'pdf') {
+        await loadPdf(fileDownloadUrl.value)
+      } else if (contentTypes.includes(type)) {
+        try {
+          const { data: contentData } = await getContent(id)
+          rawContent.value = contentData.text || ''
+          docHtml.value = contentData.html || ''
+          embeddedImages.value = contentData.images || []
+        } catch {
+          rawContent.value = ''
+          docHtml.value = ''
+          embeddedImages.value = []
+        }
       }
     }
   } catch (e: unknown) {
@@ -318,6 +490,12 @@ async function fetchDoc() {
     error.value = err?.response?.data?.message || err.message || '加载文档失败'
   } finally {
     loading.value = false
+  }
+
+  if (doc.value?.file_type?.toLowerCase() === 'pdf' && pdfDoc) {
+    await nextTick()
+    await renderAllPages()
+    console.log('[PDF] 渲染完成')
   }
 }
 
@@ -339,6 +517,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onClickOutside)
+  if (pdfDoc) pdfDoc.destroy()
 })
 </script>
 
@@ -681,6 +860,103 @@ onBeforeUnmount(() => {
   color: #9c9488;
 }
 
+/* ── DOCX HTML ── */
+.docx-html {
+  font-size: 0.92rem;
+  line-height: 1.85;
+  color: #1a1815;
+}
+.docx-html :deep(h1),
+.docx-html :deep(h2),
+.docx-html :deep(h3) {
+  font-family: 'Noto Serif SC', serif;
+  margin: 24px 0 10px;
+}
+.docx-html :deep(p) { margin: 0 0 10px; }
+.docx-html :deep(ul),
+.docx-html :deep(ol) { margin: 8px 0; padding-left: 22px; }
+.docx-html :deep(img) { max-width: 100%; margin: 12px 0; border-radius: 4px; }
+.docx-html :deep(table) { border-collapse: collapse; width: 100%; margin: 12px 0; }
+.docx-html :deep(td),
+.docx-html :deep(th) { border: 1px solid #e8e2d7; padding: 8px 12px; font-size: 0.85rem; }
+
+/* ── PDF Status ── */
+.pdf-status {
+  text-align: center;
+  padding: 40px 20px;
+  color: #9c9488;
+  font-size: 0.9rem;
+}
+.pdf-status-error {
+  color: #dc2626;
+}
+
+/* ── PDF Toolbar ── */
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e8e2d7;
+  position: sticky;
+  top: 0;
+  background: #faf9f6;
+  z-index: 10;
+}
+.pdf-toolbar button {
+  padding: 4px 12px;
+  border: 1px solid #d4cdc0;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #5c5548;
+}
+.pdf-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pdf-toolbar button:hover:not(:disabled) {
+  background: #f0ece4;
+}
+
+/* ── PDF Scroll Container ── */
+.pdf-scroll-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 0;
+}
+.pdf-page-wrapper canvas {
+  max-width: 100%;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+.pdf-page-num {
+  display: block;
+  text-align: center;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #b0a89c;
+}
+
+/* ── PDF Native Link ── */
+.pdf-native-link {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e8e2d7;
+  text-align: center;
+}
+
+/* ── PDF Page Break ── */
+.page-break {
+  border: none;
+  border-top: 2px dashed #d4cdc0;
+  margin: 32px 0;
+}
+
 /* ── Embedded Images ── */
 .embedded-images {
   display: flex;
@@ -732,6 +1008,7 @@ onBeforeUnmount(() => {
   .byline { flex-wrap: wrap; gap: 8px; }
   .embedded-images { gap: 12px; margin-bottom: 24px; }
   .embedded-image { max-height: 300px; }
+  .pdf-body { padding: 24px 28px; gap: 16px; }
 }
 
 @media (max-width: 640px) {
@@ -755,5 +1032,6 @@ onBeforeUnmount(() => {
   .embedded-images { gap: 8px; }
   .embedded-image { max-height: 250px; }
   .preview-image { max-height: 400px; }
+  .pdf-body { padding: 16px 18px; gap: 12px; }
 }
 </style>

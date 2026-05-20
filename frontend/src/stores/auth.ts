@@ -1,16 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { login as loginApi } from '../api/auth'
-
-interface UserInfo {
-  id: number
-  username: string
-  role: 'user' | 'admin'
-}
+import type { AuthUser } from '../types/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
-  const user = ref<UserInfo | null>(null)
+  const user = ref<AuthUser | null>(null)
 
   const isAuthenticated = computed(() => !!token.value)
   const isAdmin = computed(() => user.value?.role === 'admin')

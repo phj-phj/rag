@@ -438,20 +438,20 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import * as adminApi from '../../api/admin'
 import { getCategories } from '../../api/admin'
+import type { OptionItem } from '../../types/api'
 
-interface DocItem {
+interface AdminDocItem {
   id: number; title: string; file_type: string; file_size: number; createdAt: string
   category_id: number; category?: { name: string }
   tags?: { id: number; name: string }[]
   uploader?: { username: string }
 }
-interface OptionItem { id: number; name: string }
 
 const router = useRouter()
 const authStore = useAuthStore()
 const showLogout = ref(false)
 
-const documents = ref<DocItem[]>([])
+const documents = ref<AdminDocItem[]>([])
 const categories = ref<OptionItem[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -461,7 +461,7 @@ const loading = ref(false)
 const searchTitle = ref('')
 const searchCategoryId = ref<number | null>(null)
 
-const editDoc = ref<DocItem | null>(null)
+const editDoc = ref<AdminDocItem | null>(null)
 const editTitle = ref('')
 const editCategoryId = ref<number | null>(null)
 
@@ -534,7 +534,7 @@ function changePage(p: number) {
   loadDocuments()
 }
 
-function openEdit(doc: DocItem) {
+function openEdit(doc: AdminDocItem) {
   editDoc.value = doc
   editTitle.value = doc.title
   editCategoryId.value = doc.category_id

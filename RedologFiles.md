@@ -262,3 +262,36 @@
 ### HTML 预览文件
 
 - `recent-preview.html`："最近文档"页面的前端设计稿（与 DocumentLibrary 一致的深棕顶栏+琥珀色系）
+
+## 2026-05-20
+
+### PDF 文本提取（后端）
+
+- **pdf-parse 集成**：`backend/package.json` 新增 `pdf-parse: ^1.1.1`，通过 `require()` + 类型断言导入（该包无 TS 类型声明）
+- **提取服务**（`extraction.service.ts`）新增函数：
+  - `extractPdfText()` — 读取 PDF buffer → `pdfParse()` → `cleanText()` → `filterRepeatedLines()`，供 AI 问答使用
+  - `extractPdfHtml()` — 同上 + `textToHtml()` 转为结构化 HTML（段落 `<p>`、标题 `<h3>`、列表 `<ul><li>`、代码 `<pre><code>`、分页 `<hr>`）
+  - `filterRepeatedLines()` — 按页拆分，统计每行出现频率，超过 60% 页面重复的行标记为页眉/页脚自动删除
+  - `isPageNumber()` — 过滤页码模式：纯数字、"1/100"、"Page 1 of 100"、"第 1 页"、"- 1 -"
+  - `escapeHtml()` / `textToHtml()` — 纯文本转富文本 HTML，智能段落合并、短行保护、代码块检测
+- **内容 API**（`document.controller.ts`）：`getContent` 端点 PDF 跳过逻辑替换为 `extractPdfHtml()` + `extractPdfText()`
+- **AI 问答**（`chat.controller.ts`）：PDF 拒绝错误替换为 `extractPdfText()`，支持对 PDF 文档提问
+
+### PDF Canvas 逐页渲染（前端）
+
+- **pdfjs-dist 集成**：`frontend/package.json` 新增 `pdfjs-dist: ^5.7.284`，`vite.config.ts` 配置 `optimizeDeps.exclude` + Worker 独立 chunk
+- **DocViewer.vue 重写 PDF 渲染**：
+  - 从浏览器原生 `<embed>` 改为 pdfjs-dist Canvas 逐页渲染，100% 保留原始排版
+  - 动态 `createElement('canvas')` + `appendChild()` 模式，避免 Vue `v-for` + `:ref` 的 DOM 时序问题
+  - 连续滚动布局：所有页面垂直排列，每页底部标注页码
+  - 缩放工具栏：`- / 百分比 / +`，`setScale()` 触发全部页面重渲染
+  - `devicePixelRatio` 适配：Canvas 内部分辨率 × dpr，CSS 尺寸不变，高分屏清晰
+  - `Map.prototype.getOrInsertComputed` polyfill：pdfjs-dist 5.7 依赖 Chrome 专有 API，注入兼容代码
+- **时序修复**：`renderAllPages()` 从 `loadPdf()` 移到 `fetchDoc()` 的 `loading = false` 之后，确保容器 DOM 就绪
+
+### 前端类型统一
+
+- **新建** `frontend/src/types/api.ts`：13 个共享 interface（`DocItem`、`OptionItem`、`UserBrief`、`DocListResponse`、`DocContentResponse`、`DocumentListParams`、`ChatMessage`、`ChatAskResponse`、`UserItem`、`DashboardStats`、`AuthUser`、`AuthResponse`）
+- **消除重复**：`DocItem` 从 4 处内联定义合并为 1 处 import，`OptionItem` 从 2 处合并
+- **更新 8 个文件**：`stores/auth.ts`、`api/document.ts`、`views/DocViewer.vue`、`views/DocumentLibrary.vue`、`views/RecentDocs.vue`、`views/ChatView.vue`、`views/admin/DocManage.vue`、`views/admin/UserManage.vue`
+- `DocManage.vue` 保留 `AdminDocItem`（admin API 返回 camelCase `createdAt`，与用户端 API 的 snake_case `created_at` 不同）

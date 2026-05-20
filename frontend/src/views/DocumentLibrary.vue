@@ -26,6 +26,11 @@
             最近
           </router-link>
         </li>
+        <li>
+          <router-link to="/chat">
+            AI 助手
+          </router-link>
+        </li>
         <li><a href="#">共享给我</a></li>
         <li><a href="#">每日训练</a></li>
       </ul>
@@ -147,6 +152,13 @@
             @click="mobileMenuOpen = false"
           >
             最近
+          </router-link>
+          <router-link
+            to="/chat"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >
+            AI 助手
           </router-link>
           <a
             href="#"
@@ -460,10 +472,9 @@ import UploadDialog from '../components/UploadDialog.vue'
 const router = useRouter()
 const authStore = useAuthStore()
 
-interface DocItem { id: number; title: string; file_type: string; file_size: number; file_url?: string; created_at: string; uploader?: { username: string }; category?: { name: string }; tags?: { id: number; name: string }[]; isFavorited?: boolean }
-interface OptionItem { id: number; name: string }
-interface CategoryItem { id: number; name: string; docCount?: number }
-interface DashboardStats { totalDocs: number; totalCategories: number; totalUsers: number }
+import type { DocItem, OptionItem, DashboardStats } from '../types/api'
+
+interface CategoryItem extends OptionItem { docCount?: number }
 
 const documents = ref<DocItem[]>([])
 const categories = ref<CategoryItem[]>([])

@@ -10,6 +10,11 @@ const router = createRouter({
       component: () => import('../views/DocumentLibrary.vue'),
     },
     {
+      path: '/chat',
+      name: 'ChatView',
+      component: () => import('../views/ChatView.vue'),
+    },
+    {
       path: '/recent',
       name: 'RecentDocs',
       component: () => import('../views/RecentDocs.vue'),

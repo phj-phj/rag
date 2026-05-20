@@ -265,14 +265,8 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { list as listDocs } from '../api/document'
 import UploadDialog from '../components/UploadDialog.vue'
+import type { DocItem } from '../types/api'
 
-interface DocItem {
-  id: number; title: string; file_type: string; file_size: number
-  file_url?: string; created_at: string
-  uploader?: { username: string }
-  category?: { name: string }
-  tags?: { id: number; name: string }[]
-}
 const router = useRouter()
 const authStore = useAuthStore()
 
