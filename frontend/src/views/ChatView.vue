@@ -144,16 +144,38 @@
       >
         <div class="doc-panel-header">
           <span class="doc-panel-title">{{ splitDocTitle }}</span>
-          <button
-            class="doc-panel-close"
-            @click="closeDoc"
-          >
-            ✕
-          </button>
+          <div class="doc-panel-actions">
+            <router-link
+              :to="`/docs/${splitDocId}`"
+              class="doc-panel-open"
+              title="在文档库中打开"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              ><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line
+                x1="10"
+                y1="14"
+                x2="21"
+                y2="3"
+              /></svg>
+            </router-link>
+            <button
+              class="doc-panel-close"
+              @click="closeDoc"
+            >
+              ✕
+            </button>
+          </div>
         </div>
-        <iframe
-          :src="`/docs/${splitDocId}`"
-          class="doc-iframe"
+        <DocumentReader
+          :doc-id="splitDocId"
+          :embedded="true"
         />
       </div>
     </main>
@@ -166,6 +188,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { ask as askApi } from '../api/chat'
 import { marked } from 'marked'
+import DocumentReader from '../components/DocumentReader.vue'
 import type { ChatMessage } from '../types/api'
 
 const router = useRouter()
@@ -343,9 +366,11 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
 }
 .doc-panel {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: #fff;
+  overflow-y: auto;
 }
 .doc-panel-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -353,6 +378,22 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
   border-bottom: 1px solid #e8e2d7;
   flex-shrink: 0;
 }
+.doc-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.doc-panel-open {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1px solid #e8e2d7;
+  background: none;
+  cursor: pointer;
+  color: #9c9488;
+  display: flex; align-items: center; justify-content: center;
+  text-decoration: none;
+}
+.doc-panel-open:hover { background: #f0ece4; color: #d97706; border-color: #d97706; }
 .doc-panel-title {
   font-size: 0.85rem;
   font-weight: 600;
@@ -369,11 +410,6 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
   display: flex; align-items: center; justify-content: center;
 }
 .doc-panel-close:hover { background: #fef2f2; color: #dc2626; }
-.doc-iframe {
-  flex: 1;
-  border: none;
-  width: 100%;
-}
 
 /* ── Chat Container ── */
 .chat-container {
