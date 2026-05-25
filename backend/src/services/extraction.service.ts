@@ -282,3 +282,28 @@ export async function extractPdfHtml(filePath: string): Promise<string> {
   const text = filterRepeatedLines(cleanText(data.text))
   return textToHtml(text)
 }
+
+// ── RAG 切块用：根据文件类型提取纯文本 ──
+
+export async function getDocumentTextForChunking(
+  filePath: string,
+  fileType: string,
+): Promise<string | null> {
+  const type = fileType.toLowerCase()
+
+  try {
+    if (type === 'txt' || type === 'plain') {
+      return cleanText(await readFile(filePath, 'utf-8'))
+    }
+    if (type === 'pdf') {
+      return await extractPdfText(filePath)
+    }
+    if (type === 'docx' || type === 'doc') {
+      return await extractDocxText(filePath)
+    }
+    return null // 图片等不支持切块
+  } catch (err) {
+    console.error(`[chunking] 提取文本失败 (${fileType}):`, (err as Error).message)
+    return null
+  }
+}

@@ -295,3 +295,53 @@
 - **消除重复**：`DocItem` 从 4 处内联定义合并为 1 处 import，`OptionItem` 从 2 处合并
 - **更新 8 个文件**：`stores/auth.ts`、`api/document.ts`、`views/DocViewer.vue`、`views/DocumentLibrary.vue`、`views/RecentDocs.vue`、`views/ChatView.vue`、`views/admin/DocManage.vue`、`views/admin/UserManage.vue`
 - `DocManage.vue` 保留 `AdminDocItem`（admin API 返回 camelCase `createdAt`，与用户端 API 的 snake_case `created_at` 不同）
+
+## 2026-05-25
+
+### DocumentReader 公共组件提取
+
+- **问题**：ChatView 通过 `<iframe>` 嵌入 `/docs/:id` 加载 DocViewer，导致 AI 助手侧面板中显示完整页面外壳（返回/下载按钮、头像菜单）
+- **方案**：将文件渲染逻辑从 DocViewer.vue 抽取为独立组件，ChatView 直接引用
+- **新建** `frontend/src/components/DocumentReader.vue`：
+  - 包含文章头部（标题、类型徽章、分类、上传者、日期、大小）+ 所有文件渲染（PDF/Word/TXT/图片/不支持类型）+ 加载/错误状态
+  - `embedded` prop：嵌入模式下去除外层 padding、shadow、底部 footer，适配侧面板窄屏
+  - 通过 `@loaded` 事件向上传递文档数据，供父组件下载按钮使用
+- **精简** `frontend/src/views/DocViewer.vue`（~1038 行 → ~200 行）：只保留顶部导航栏（返回/下载/头像）、引用 `<DocumentReader />`
+- **改造** `frontend/src/views/ChatView.vue`：`<iframe>` 替换为 `<DocumentReader :embedded="true" />`，侧面板头部新增"在文档库中打开"外链按钮（`<router-link>`）
+- **修复** 侧面板高度：`.doc-panel` 添加 `min-height: 0` + `overflow-y: auto`，长文档在面板内滚动而非撑长页面
+- Git commit: `2c8c461` — refactor: 提取 DocumentReader 公共组件，消除 AI 助手中的页面外壳
+
+### RAG 第 1 步：文档语义分块
+
+- **目标**：文档上传后自动切块，每块 ≤ 250 字，embedding 可用时按语义边界切分
+- **新建** `backend/src/models/DocumentChunk.ts`：
+  - 字段：`document_id`、`chunk_index`、`content`、`token_count`、`strategy`（semantic/paragraph）、`heading`（章节标题）、`position_start/end`
+  - 通过 `sequelize.sync()` 自动建表 `Document_Chunks`
+- **新建** `backend/src/services/chunking.service.ts`：
+  - 优先语义分块：句子分割 → embedding 向量 → 相邻句子余弦相似度 → 低于阈值 0.5 切断 → 控制 min/max 块大小合并
+  - 回退段落分块：embedding API 不可用时自动降级为按段落+句子边界切分
+  - 每块 console 输出前 100 字预览 + 章节标题 + 策略类型
+- **新建** `backend/src/services/embedding.service.ts`：
+  - 使用 SiliconFlow API（`BAAI/bge-large-zh-v1.5`，1024 维），OpenAI 兼容格式
+  - HuggingFace 尝试失败：直连返回 401（2025 年起强制登录），国内镜像 hf-mirror.com 同样 401
+- **修改** `backend/src/controllers/document.controller.ts`：
+  - 上传完成后异步调用 `chunkDocument()` 触发切块
+  - 新增 `getChunks()` 调试 API：`GET /api/documents/:id/chunks` 返回所有 chunk 含前 100 字预览
+- **修改** `backend/src/routes/document.routes.ts`：注册 `/:id/chunks` 路由（放在 `/:id` 之前避免参数冲突）
+- **修改** `backend/src/services/extraction.service.ts`：新增 `getDocumentTextForChunking()` 公共函数
+- **修改** `backend/src/models/index.ts`：注册 DocumentChunk 关联与导出
+- **配置** `backend/.env`：新增 `SILICONFLOW_BASE_URL`、`SILICONFLOW_API_KEY`、`SILICONFLOW_EMBED_MODEL`
+
+### 验证结果
+
+- 上传语义分块测试文档（三个话题：闭包 → 事件循环 → 上下文管理器）
+- 生成 5 个 chunk，全部标记为 `semantic` 策略，话题边界正确识别
+- 章节标题（"第二章 闭包原理"等）正确检测并关联到对应 chunk
+- 每个 chunk ≤ 250 字（62t / 77t / 90t / 26t / 128t）
+- `curl /api/documents/:id/chunks` 返回完整切块数据
+
+### RAG 计划
+
+- 编写 `rag-implementation.md`：5 步详细实现计划（切块 → 向量化 → LanceDB 检索 → 改造聊天接口 → 可选优化）
+- 参考 [llm-stacks.com](https://llm-stacks.com/docs/intro) RAG 学习指南，适配为 Node.js 技术栈
+- 决定不上全栈框架（LangChain/LlamaIndex），原因：单一 LLM 提供商无需抽象层，纯函数链路更易维护

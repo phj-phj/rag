@@ -2,9 +2,10 @@ import { Request, Response } from 'express'
 import path from 'path'
 import fs from 'fs/promises'
 import { Op } from 'sequelize'
-import { Document, Category, Tag, User } from '../models'
+import { Document, Category, Tag, User, DocumentChunk } from '../models'
 import { deleteFile, getFileUrl } from '../services/file.service'
-import { extractDocxText, extractDocxImages, extractDocxHtml, extractPdfText, extractPdfHtml, cleanText } from '../services/extraction.service'
+import { extractDocxText, extractDocxImages, extractDocxHtml, extractPdfText, extractPdfHtml, cleanText, getDocumentTextForChunking } from '../services/extraction.service'
+import { splitIntoChunks } from '../services/chunking.service'
 
 function docToJson(doc: Document): Record<string, unknown> {
   const d = (doc.toJSON() as unknown) as Record<string, unknown>
@@ -149,9 +150,44 @@ export async function create(req: Request, res: Response): Promise<void> {
     } as any)
 
     createdDocs.push(docToJson(reloaded!))
+
+    // ── RAG: 语义切块 ──
+    chunkDocument(doc.id, doc.file_path, doc.file_type)
   }
 
   res.status(201).json(createdDocs)
+}
+
+// ── RAG: 文档上传后异步切块 ──
+
+async function chunkDocument(docId: number, filePath: string, fileType: string): Promise<void> {
+  try {
+    const fullPath = path.resolve(__dirname, '../../', filePath)
+    const text = await getDocumentTextForChunking(fullPath, fileType)
+    if (!text) return
+
+    const chunks = await splitIntoChunks(text)
+    if (chunks.length === 0) return
+
+    await Promise.all(
+      chunks.map(c =>
+        DocumentChunk.create({
+          document_id: docId,
+          chunk_index: c.index,
+          content: c.content,
+          token_count: c.tokenCount,
+          strategy: c.strategy,
+          heading: c.heading,
+          position_start: c.positionStart,
+          position_end: c.positionEnd,
+        })
+      )
+    )
+
+    console.log(`[RAG] 文档 ${docId} 切块完成：${chunks.length} 块`)
+  } catch (err) {
+    console.error(`[RAG] 文档 ${docId} 切块失败:`, (err as Error).message)
+  }
 }
 
 export async function remove(req: Request, res: Response): Promise<void> {
@@ -210,4 +246,35 @@ export async function getContent(req: Request, res: Response): Promise<void> {
     console.error('内容提取失败:', err)
     res.status(500).json({ message: '文件内容提取失败' })
   }
+}
+
+// ── RAG 调试：查看文档切块结果 ──
+
+export async function getChunks(req: Request, res: Response): Promise<void> {
+  const doc = await Document.findByPk(Number(req.params.id), {
+    attributes: ['id', 'title'],
+  })
+  if (!doc) {
+    res.status(404).json({ message: '文档不存在' })
+    return
+  }
+
+  const chunks = await DocumentChunk.findAll({
+    where: { document_id: doc.id },
+    order: [['chunk_index', 'ASC']],
+  })
+
+  res.json({
+    document: { id: doc.id, title: doc.title },
+    totalChunks: chunks.length,
+    chunks: chunks.map(c => ({
+      index: c.chunk_index,
+      content: c.content,
+      preview: c.content.slice(0, 100),
+      tokenCount: c.token_count,
+      heading: c.heading,
+      position: `${c.position_start}-${c.position_end}`,
+      strategy: c.strategy,
+    })),
+  })
 }
