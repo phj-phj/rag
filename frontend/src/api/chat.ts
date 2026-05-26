@@ -9,7 +9,7 @@ export function ask(question: string, documentId?: number) {
  */
 export function askStream(question: string): Promise<ReadableStream<Uint8Array>> {
   // 用 fetch 直接调（axios 不支持流式读取 body）
-  const baseURL = (client.defaults.baseURL as string) || 'http://localhost:3000/api'
+  const baseURL = (import.meta.env.VITE_API_BASE_URL as string) || '/api'
   const token = localStorage.getItem('token')
 
   return fetch(`${baseURL}/chat/ask/stream`, {

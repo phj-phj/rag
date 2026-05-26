@@ -54,13 +54,13 @@ export async function askStream(req: Request, res: Response): Promise<void> {
     return
   }
 
-  console.log(`[chat-stream] 收到问题: ${question.slice(0, 50)}`)
+  console.log(`[chat-stream] 收到问题，长度: ${question.length} 字`)
 
   // 先检索
   let retrieved
   try {
     retrieved = await retrieve(question, 5)
-    console.log(`[chat-stream] 检索完成: ${retrieved.length} 个片段`)
+    console.log(`[chat-stream] 检索命中: ${retrieved.length} 个片段`)
   } catch (err) {
     console.error('[chat-stream] 检索失败:', err)
     res.status(500).json({ message: `检索失败: ${(err as Error).message}` })

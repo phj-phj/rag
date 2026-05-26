@@ -56,7 +56,7 @@ async function semanticChunking(
   console.log(`[chunking] 第1步：共 ${sentences.length} 个句子`)
   if (sentences.length <= 1) {
     const c = makeChunk(sentences, 0, 'semantic')
-    logChunk(c)
+    console.log(`[chunking]   块${c.index} (${c.content.length}字, ${c.tokenCount}t, ${c.strategy})`)
     return [c]
   }
 
@@ -79,8 +79,7 @@ async function semanticChunking(
   // 合并 + 控制大小
   const chunks = mergeSemanticGroups(sentences, breakpoints, minSize, maxSize)
   console.log(`[chunking] 第5步：最终生成 ${chunks.length} 个块`)
-
-  chunks.forEach(logChunk)
+  chunks.forEach(c => console.log(`[chunking]   块${c.index} (${c.content.length}字, ${c.tokenCount}t, ${c.strategy})`))
   return chunks
 }
 
@@ -95,7 +94,7 @@ function paragraphChunking(text: string, maxSize: number, minSize: number): Chun
   const merged = mergeSegments(segments, maxSize, minSize)
 
   console.log(`[chunking] 段落分块：${segments.length} 个段落片段 → ${merged.length} 个块`)
-  merged.forEach((content, i) => console.log(`[chunking]   块${i} (${content.length}字): ${content.slice(0, 100).replace(/\n/g, ' ')}...`))
+  merged.forEach((content, i) => console.log(`[chunking]   块${i} (${content.length}字)`))
   return merged.map((content, i) => ({
     index: i, content, tokenCount: estimateTokens(content),
     heading: detectHeading(content), positionStart: 0, positionEnd: content.length,
@@ -239,12 +238,6 @@ function makeChunk(sentences: SentenceMeta[], index: number, strategy: 'semantic
   const content = sentences.map(s => s.text).join('')
   return { index, content, tokenCount: estimateTokens(content),
     heading: sentences[0]?.heading || null, positionStart: 0, positionEnd: content.length, strategy }
-}
-
-function logChunk(c: ChunkResult): void {
-  const preview = c.content.slice(0, 100).replace(/\n/g, ' ')
-  const hi = c.heading ? ` [${c.heading}]` : ''
-  console.log(`[chunking]   块${c.index}${hi} (${c.content.length}字, ${c.tokenCount}t, ${c.strategy}): ${preview}...`)
 }
 
 function estimateTokens(text: string): number {

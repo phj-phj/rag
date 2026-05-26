@@ -81,9 +81,9 @@ export async function retrieve(question: string, topK: number = 5): Promise<Retr
     score: r._distance !== undefined ? Math.max(0, 1 - r._distance) : 0,
   }))
 
-  console.log(`[retrieval] 检索完成：问题="${question.slice(0, 50)}", 命中 ${scored.length} 个片段`)
+  console.log(`[retrieval] 命中 ${scored.length} 个片段`)
   scored.forEach((c: RetrievedChunk, i: number) => {
-    console.log(`[retrieval]   ${i + 1}. [${c.documentTitle}] score=${c.score.toFixed(3)}: ${c.content.slice(0, 80).replace(/\n/g, ' ')}...`)
+    console.log(`[retrieval]   ${i + 1}. [${c.documentTitle}] score=${c.score.toFixed(3)}`)
   })
 
   return scored
