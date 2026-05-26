@@ -2,22 +2,27 @@
   <div class="recent-page">
     <!-- TOP BAR -->
     <header class="topbar">
-      <button
-        class="hamburger"
-        @click="mobileMenuOpen = !mobileMenuOpen"
-      >
-        <span /><span /><span />
-      </button>
       <router-link
         to="/"
         class="logo"
       >
         Pap<em>ier</em>
       </router-link>
+      <button
+        class="hamburger"
+        @click="mobileMenuOpen = !mobileMenuOpen"
+      >
+        <span /><span /><span />
+      </button>
       <ul class="top-nav">
         <li>
           <router-link to="/">
             文档库
+          </router-link>
+        </li>
+        <li>
+          <router-link to="/chat">
+            AI 助手
           </router-link>
         </li>
         <li><a href="#">集合</a></li>
@@ -122,6 +127,13 @@
             @click="mobileMenuOpen = false"
           >
             文档库
+          </router-link>
+          <router-link
+            to="/chat"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >
+            AI 助手
           </router-link>
           <router-link
             to="/recent"

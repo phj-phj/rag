@@ -11,6 +11,12 @@
       >
         Pap<em>ier</em>
       </router-link>
+      <button
+        class="hamburger"
+        @click="showMobileNav = !showMobileNav"
+      >
+        <span /><span /><span />
+      </button>
       <ul class="top-nav">
         <li>
           <router-link to="/">
@@ -25,6 +31,14 @@
             AI 助手
           </router-link>
         </li>
+        <li>
+          <router-link to="/recent">
+            最近
+          </router-link>
+        </li>
+        <li><a href="#">集合</a></li>
+        <li><a href="#">共享给我</a></li>
+        <li><a href="#">每日训练</a></li>
       </ul>
       <div class="topbar-right">
         <div
@@ -57,6 +71,57 @@
         </div>
       </div>
     </header>
+
+    <!-- Mobile Nav Overlay -->
+    <Transition name="slide-down">
+      <div
+        v-if="showMobileNav"
+        class="mobile-nav-overlay"
+        @click="showMobileNav = false"
+      >
+        <nav
+          class="mobile-nav-panel"
+          @click.stop
+        >
+          <router-link
+            to="/"
+            class="mobile-nav-link"
+            @click="showMobileNav = false"
+          >
+            文档库
+          </router-link>
+          <router-link
+            to="/chat"
+            class="mobile-nav-link active"
+            @click="showMobileNav = false"
+          >
+            AI 助手
+          </router-link>
+          <router-link
+            to="/recent"
+            class="mobile-nav-link"
+            @click="showMobileNav = false"
+          >
+            最近
+          </router-link>
+          <a
+            href="#"
+            class="mobile-nav-link"
+            @click.prevent="showMobileNav = false"
+          >集合</a>
+          <a
+            href="#"
+            class="mobile-nav-link"
+            @click.prevent="showMobileNav = false"
+          >共享给我</a>
+          <a
+            href="#"
+            class="mobile-nav-link"
+            @click.prevent="showMobileNav = false"
+          >每日训练</a>
+        </nav>
+      </div>
+    </Transition>
 
     <!-- MAIN -->
     <main class="main">
@@ -187,7 +252,7 @@
 import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { ask as askApi } from '../api/chat'
+import { askStream } from '../api/chat'
 import { marked } from 'marked'
 import DocumentReader from '../components/DocumentReader.vue'
 import type { ChatMessage } from '../types/api'
@@ -199,6 +264,7 @@ const question = ref('')
 const messages = ref<ChatMessage[]>([])
 const loading = ref(false)
 const showLogout = ref(false)
+const showMobileNav = ref(false)
 const msgList = ref<HTMLElement | null>(null)
 const splitDocId = ref<number | null>(null)
 const splitDocTitle = ref('')
@@ -227,20 +293,89 @@ async function handleAsk() {
   messages.value.push({ role: 'user', content: q })
   question.value = ''
   loading.value = true
+  await nextTick()
+  scrollToBottom()
+
+  // AI 消息在收到第一个 token 时才创建，之前只显示加载动画
+  let aiMsg: ChatMessage | null = null
+  let pendingDocs: { id: number; title: string }[] | null = null
 
   try {
-    const { data } = await askApi(q)
-    messages.value.push({
-      role: 'assistant',
-      content: data.answer,
-      docs: data.docs || [],
+    console.log('[stream] 开始请求:', q)
+    const body = await askStream(q).catch((e: Error) => {
+      throw new Error(`连接失败: ${e.message}`)
     })
-  } catch {
-    messages.value.push({ role: 'assistant', content: '抱歉，AI 服务暂时不可用，请稍后重试。' })
+
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+
+    while (true) {
+      const { done, value } = await reader.read().catch((e: Error) => {
+        throw new Error(`读取响应流失败: ${e.message}`)
+      })
+      if (done) {
+        console.log('[stream] 流结束')
+        break
+      }
+
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const json = line.slice(6).trim()
+        if (json === '[DONE]') {
+          console.log('[stream] 收到 [DONE]')
+          continue
+        }
+        try {
+          const data = JSON.parse(json)
+          if (data.type === 'docs') {
+            pendingDocs = data.docs
+            console.log('[stream] 来源文档:', data.docs.length, '个')
+          } else if (data.type === 'token') {
+            if (!aiMsg) {
+              // 第一个 token → 创建消息气泡，补上暂存的 docs
+              loading.value = false
+              messages.value.push({
+                role: 'assistant',
+                content: '',
+                docs: pendingDocs || undefined,
+              })
+              aiMsg = messages.value[messages.value.length - 1]
+              await nextTick()
+            }
+            aiMsg.content += data.content
+            scrollToBottom()
+          } else if (data.type === 'error') {
+            if (!aiMsg) {
+              loading.value = false
+              messages.value.push({ role: 'assistant', content: '' })
+              aiMsg = messages.value[messages.value.length - 1]
+            }
+            aiMsg.content = `❌ ${data.message}`
+            console.error('[stream] 服务端错误:', data.message)
+          }
+        } catch {
+          console.warn('[stream] JSON 解析失败:', json.slice(0, 100))
+        }
+      }
+    }
+
+    if (!aiMsg) {
+      loading.value = false
+      messages.value.push({ role: 'assistant', content: '（AI 未返回内容，请重试）' })
+      console.warn('[stream] 未收到任何 token')
+    }
+  } catch (e) {
+    loading.value = false
+    const errMsg = (e as Error).message || String(e)
+    messages.value.push({ role: 'assistant', content: `❌ 请求失败: ${errMsg}` })
+    console.error('[stream] 异常:', errMsg, e)
   } finally {
     loading.value = false
-    await nextTick()
-    scrollToBottom()
   }
 }
 
@@ -549,6 +684,36 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
 }
 .chat-send:hover { background: var(--amber-deep); }
 .chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Hamburger ── */
+.hamburger {
+  display: none; flex-direction: column; gap: 4px;
+  background: none; border: none; cursor: pointer; padding: 8px; margin-right: 8px;
+}
+.hamburger span { display: block; width: 22px; height: 2px; background: var(--parchment); border-radius: 1px; }
+
+/* ── Mobile Nav ── */
+.mobile-nav-overlay {
+  position: fixed; top: var(--topbar-h); left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.45); z-index: 150;
+}
+.mobile-nav-panel { background: var(--ink); padding: 8px 0; }
+.mobile-nav-link {
+  display: block; padding: 14px 32px; color: var(--parchment); text-decoration: none;
+  font-size: 0.95rem; font-weight: 500; transition: background 0.15s;
+}
+.mobile-nav-link:hover,
+.mobile-nav-link.active { background: rgba(196,135,59,0.2); color: var(--amber); }
+
+.slide-down-enter-active,
+.slide-down-leave-active { transition: all 0.25s ease; }
+.slide-down-enter-from,
+.slide-down-leave-to { opacity: 0; transform: translateY(-8px); }
+
+@media (max-width: 900px) {
+  .hamburger { display: flex; }
+  .top-nav { display: none; }
+}
 
 @media (max-width: 768px) {
   .split-mode .chat-panel { flex: 0 0 40%; }
