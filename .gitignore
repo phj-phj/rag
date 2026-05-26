@@ -29,5 +29,4 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# 开发日志（不提交）
-RedologFiles.md
+

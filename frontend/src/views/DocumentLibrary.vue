@@ -5,6 +5,12 @@
       <div class="logo">
         Pap<em>ier</em>
       </div>
+      <button
+        class="hamburger"
+        @click="mobileMenuOpen = !mobileMenuOpen"
+      >
+        <span /><span /><span />
+      </button>
       <ul class="top-nav">
         <li>
           <router-link
@@ -15,7 +21,11 @@
           </router-link>
         </li>
         <li><a href="#">集合</a></li>
-        <li><a href="#">最近</a></li>
+        <li>
+          <router-link to="/recent">
+            最近
+          </router-link>
+        </li>
         <li><a href="#">共享给我</a></li>
         <li><a href="#">每日训练</a></li>
       </ul>
@@ -36,27 +46,146 @@
             <path d="M21 21l-4.35-4.35" />
           </svg>
           <input
+            v-model="filters.title"
             type="text"
             placeholder="搜索文档..."
+            @input="debouncedSearch"
           >
         </div>
         <router-link
+          v-if="authStore.isAdmin"
           to="/admin"
           class="btn-admin"
         >
-          后台页面
+          后台管理
         </router-link>
-        <button class="btn-upload">
+        <button
+          v-if="authStore.isAuthenticated"
+          class="btn-upload"
+          @click="showUpload = true"
+        >
           + 上传文档
         </button>
-        <div class="avatar">
-          P
+        <router-link
+          v-else
+          to="/login"
+          class="btn-upload"
+          style="text-decoration:none;"
+        >
+          登录
+        </router-link>
+        <div
+          v-if="authStore.user"
+          class="avatar-wrapper"
+        >
+          <div
+            class="avatar"
+            @click="showLogout = !showLogout"
+          >
+            {{ authStore.user.username[0].toUpperCase() }}
+          </div>
+          <Transition name="fade">
+            <div
+              v-if="showLogout"
+              class="avatar-dropdown"
+            >
+              <div class="dropdown-user">
+                <span class="dropdown-name">{{ authStore.user.username }}</span>
+                <span class="dropdown-role">{{ authStore.isAdmin ? '管理员' : '用户' }}</span>
+              </div>
+              <button
+                class="dropdown-item"
+                @click="handleLogout"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  class="dropdown-icon"
+                ><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line
+                  x1="21"
+                  y1="12"
+                  x2="9"
+                  y2="12"
+                /></svg>
+                退出登录
+              </button>
+            </div>
+          </Transition>
         </div>
       </div>
     </header>
 
+    <!-- Mobile Nav Overlay -->
+    <Transition name="slide-down">
+      <div
+        v-if="mobileMenuOpen"
+        class="mobile-nav-overlay"
+        @click="mobileMenuOpen = false"
+      >
+        <nav
+          class="mobile-nav-panel"
+          @click.stop
+        >
+          <router-link
+            to="/"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >
+            文档库
+          </router-link>
+          <a
+            href="#"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >集合</a>
+          <router-link
+            to="/recent"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >
+            最近
+          </router-link>
+          <a
+            href="#"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >共享给我</a>
+          <a
+            href="#"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false"
+          >每日训练</a>
+          <button
+            v-if="!authStore.isAuthenticated"
+            class="mobile-nav-link"
+            @click="mobileMenuOpen = false; $router.push('/login')"
+          >
+            登录
+          </button>
+        </nav>
+      </div>
+    </Transition>
+
     <!-- SIDEBAR -->
-    <nav class="sidebar">
+    <button
+      class="sidebar-toggle"
+      @click="mobileSidebarOpen = !mobileSidebarOpen"
+    >
+      <span /><span /><span />
+    </button>
+    <nav
+      class="sidebar"
+      :class="{ 'sidebar--open': mobileSidebarOpen }"
+    >
+      <button
+        class="sidebar-close"
+        @click="mobileSidebarOpen = false"
+      >
+        ✕
+      </button>
       <div class="sidebar-section">
         <div class="sidebar-title">
           浏览
@@ -65,7 +194,8 @@
           <li>
             <a
               href="#"
-              class="active"
+              :class="{ active: !filters.category_id && !showFavorites }"
+              @click.prevent="clearFilters"
             >
               <svg
                 class="sidebar-icon"
@@ -80,11 +210,15 @@
                 <polyline points="9 22 9 12 15 12 15 22" />
               </svg>
               全部文档
-              <span class="sidebar-count">128</span>
+              <span class="sidebar-count">{{ sidebarAllTotal }}</span>
             </a>
           </li>
           <li>
-            <a href="#">
+            <a
+              href="#"
+              :class="{ active: showFavorites }"
+              @click.prevent="toggleFavorites"
+            >
               <svg
                 class="sidebar-icon"
                 viewBox="0 0 24 24"
@@ -97,29 +231,7 @@
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>
               收藏
-              <span class="sidebar-count">12</span>
-            </a>
-          </li>
-          <li>
-            <a href="#">
-              <svg
-                class="sidebar-icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="10"
-                />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-              最近浏览
-              <span class="sidebar-count">24</span>
+              <span class="sidebar-count">{{ favTotal }}</span>
             </a>
           </li>
         </ul>
@@ -132,15 +244,19 @@
         <ul class="sidebar-list">
           <li
             v-for="cat in categories"
-            :key="cat.name"
+            :key="cat.id"
           >
-            <a href="#">
+            <a
+              href="#"
+              :class="{ active: filters.category_id === cat.id }"
+              @click.prevent="setFilter('category_id', cat.id)"
+            >
               <span
                 class="sidebar-tag"
-                :style="{ background: cat.color }"
+                :style="{ background: catColors[cat.id % catColors.length] }"
               />
               {{ cat.name }}
-              <span class="sidebar-count">{{ cat.count }}</span>
+              <span class="sidebar-count">{{ cat.docCount || 0 }}</span>
             </a>
           </li>
         </ul>
@@ -153,9 +269,12 @@
         <ul class="sidebar-list">
           <li
             v-for="tag in tags"
-            :key="tag"
+            :key="tag.id"
           >
-            <a href="#"># {{ tag }}</a>
+            <a
+              href="#"
+              @click.prevent="setFilter('tags', String(tag.id))"
+            ># {{ tag.name }}</a>
           </li>
         </ul>
       </div>
@@ -164,8 +283,8 @@
     <!-- MAIN CONTENT -->
     <main class="main">
       <div class="page-header">
-        <h1>文档库</h1>
-        <p>浏览和管理你所有的共享文档</p>
+        <h1>{{ showFavorites ? '我的收藏' : '文档库' }}</h1>
+        <p>{{ showFavorites ? '你收藏的文档' : '浏览和管理你所有的共享文档' }}</p>
       </div>
 
       <!-- Stats -->
@@ -178,10 +297,9 @@
           <div class="stat-label">
             {{ stat.label }}
           </div>
-          <div
-            class="stat-value"
-            v-html="stat.value"
-          />
+          <div class="stat-value">
+            {{ stat.value }}
+          </div>
           <div :class="['stat-change', stat.changeType]">
             {{ stat.change }}
           </div>
@@ -189,12 +307,16 @@
       </div>
 
       <!-- Featured -->
-      <div class="featured">
+      <div
+        v-if="featured && !showFavorites"
+        class="featured"
+        @click="openDoc(featured)"
+      >
         <div class="featured-label">
           精选文档
         </div>
         <h2>{{ featured.title }}</h2>
-        <p>{{ featured.author }}</p>
+        <p>{{ featured.uploader?.username }}</p>
         <div class="featured-meta">
           <span>
             <svg
@@ -212,7 +334,7 @@
                 r="4"
               />
             </svg>
-            {{ featured.author }}
+            {{ featured.uploader?.username }}
           </span>
           <span>
             <svg
@@ -230,177 +352,373 @@
               />
               <polyline points="12 6 12 12 16 14" />
             </svg>
-            {{ featured.updatedAt }}
-          </span>
-          <span>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-              <circle
-                cx="12"
-                cy="12"
-                r="3"
-              />
-            </svg>
-            {{ featured.views }} 次浏览
+            {{ formatDate(featured.created_at) }}
           </span>
         </div>
       </div>
 
-      <!-- Recent docs -->
+      <!-- Section header -->
       <div class="section-header">
-        <h2>最近更新</h2>
-        <a href="#">查看全部 →</a>
+        <h2>{{ showFavorites ? '收藏文档' : '最近更新' }}</h2>
       </div>
 
-      <div class="doc-grid">
+      <!-- Loading -->
+      <div
+        v-if="loading"
+        class="text-center py-12 text-gray-400"
+      >
+        加载中...
+      </div>
+
+      <!-- Empty -->
+      <div
+        v-else-if="documents.length === 0"
+        class="text-center py-12 text-gray-400"
+      >
+        {{ showFavorites ? '暂无收藏' : '暂无文档' }}
+      </div>
+
+      <!-- Doc Cards -->
+      <div
+        v-else
+        class="doc-grid"
+      >
         <div
           v-for="doc in documents"
           :key="doc.id"
           class="doc-card"
+          @click="openDoc(doc)"
         >
-          <div :class="['doc-type', doc.type.toLowerCase()]">
-            {{ doc.type }}
+          <div :class="['doc-type', (doc.file_type || '').toLowerCase()]">
+            {{ doc.file_type?.toUpperCase() }}
           </div>
-          <h3>{{ doc.title }}</h3>
+          <div class="doc-card-header">
+            <h3>{{ doc.title }}</h3>
+            <button
+              v-if="authStore.isAuthenticated"
+              class="fav-btn"
+              :class="{ favorited: doc.isFavorited }"
+              :title="doc.isFavorited ? '取消收藏' : '收藏'"
+              @click.stop="handleFavorite(doc)"
+            >
+              {{ doc.isFavorited ? '★' : '☆' }}
+            </button>
+          </div>
           <p class="excerpt">
-            {{ doc.excerpt }}
+            {{ doc.file_size ? formatSize(doc.file_size) : '' }}
           </p>
           <div class="doc-footer">
             <div class="doc-author">
               <div
                 class="doc-author-avatar"
-                :style="{ background: doc.authorAvatar }"
+                :style="{ background: avatarColor(doc.uploader?.username || '') }"
               >
-                {{ doc.author[0] }}
+                {{ (doc.uploader?.username || '?')[0].toUpperCase() }}
               </div>
-              <span>{{ doc.author }}</span>
+              <span>{{ doc.uploader?.username || '未知' }}</span>
             </div>
-            <span class="doc-date">{{ doc.date }}</span>
+            <span class="doc-date">{{ formatDate(doc.created_at) }}</span>
           </div>
         </div>
       </div>
+
+      <!-- Pagination -->
+      <div
+        v-if="totalPages > 1"
+        class="flex justify-center gap-2 mt-8 pb-8"
+      >
+        <button
+          v-for="p in totalPages"
+          :key="p"
+          class="px-3 py-1.5 rounded text-sm"
+          :class="page === p ? 'text-white' : 'bg-white border border-gray-200 hover:bg-gray-50'"
+          :style="page === p ? { backgroundColor: '#c4873b' } : {}"
+          @click="changePage(p)"
+        >
+          {{ p }}
+        </button>
+      </div>
     </main>
+
+    <!-- Upload Dialog -->
+    <UploadDialog
+      :visible="showUpload"
+      @close="onUploadClose"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-interface Category {
-  name: string
-  color: string
-  count: number
+import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import { list as listDocs } from '../api/document'
+import * as favoriteApi from '../api/favorite'
+import { getCategories, getTags, getStats } from '../api/admin'
+import UploadDialog from '../components/UploadDialog.vue'
+
+const router = useRouter()
+const authStore = useAuthStore()
+
+interface DocItem { id: number; title: string; file_type: string; file_size: number; file_url?: string; created_at: string; uploader?: { username: string }; category?: { name: string }; tags?: { id: number; name: string }[]; isFavorited?: boolean }
+interface OptionItem { id: number; name: string }
+interface CategoryItem { id: number; name: string; docCount?: number }
+interface DashboardStats { totalDocs: number; totalCategories: number; totalUsers: number }
+
+const documents = ref<DocItem[]>([])
+const categories = ref<CategoryItem[]>([])
+const tags = ref<OptionItem[]>([])
+const total = ref(0)
+const allTotal = ref(0)
+const favTotal = ref(0)
+const page = ref(1)
+const pageSize = ref(12)
+const loading = ref(false)
+const showFavorites = ref(false)
+const showUpload = ref(false)
+const showLogout = ref(false)
+const mobileMenuOpen = ref(false)
+const mobileSidebarOpen = ref(false)
+const isMobile = ref(false)
+
+const filters = reactive({
+  title: '',
+  category_id: null as number | null,
+  tags: '',
+})
+
+const featured = ref<DocItem | null>(null)
+const dashboardStats = ref<DashboardStats | null>(null)
+
+const catColors = ['#7a3b3b', '#c4873b', '#6b7c5e', '#5a4d3a', '#6b8db5', '#8b6b4a', '#5a7a5a', '#4a6b8a']
+
+const sidebarAllTotal = computed(() => {
+  if (dashboardStats.value?.totalDocs !== undefined) return dashboardStats.value.totalDocs
+  return allTotal.value
+})
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+
+const stats = computed(() => {
+  const s = dashboardStats.value
+  return [
+    { label: '总文档数', value: s?.totalDocs ?? '—', change: '总数', changeType: 'up' as const },
+    { label: '分类数量', value: s?.totalCategories ?? '—', change: '个分类', changeType: 'up' as const },
+    { label: '用户数量', value: s?.totalUsers ?? '—', change: '成员', changeType: 'up' as const },
+    { label: '总存储量', value: '—', change: '本地', changeType: 'down' as const },
+  ]
+})
+
+let searchTimer: ReturnType<typeof setTimeout>
+
+function debouncedSearch() {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    page.value = 1
+    loadDocuments()
+  }, 300)
 }
 
-interface Stat {
-  label: string
-  value: string
-  change: string
-  changeType: 'up' | 'down'
+function setFilter(key: string, value: number | string) {
+  showFavorites.value = false
+  if (key === 'category_id') {
+    filters.category_id = filters.category_id === value ? null : (value as number)
+  } else if (key === 'tags') {
+    filters.tags = filters.tags === value ? '' : (value as string)
+  }
+  page.value = 1
+  loadDocuments()
+  loadFeatured()
 }
 
-interface Featured {
-  title: string
-  author: string
-  updatedAt: string
-  views: string
+function clearFilters() {
+  showFavorites.value = false
+  filters.title = ''
+  filters.category_id = null
+  filters.tags = ''
+  page.value = 1
+  loadDocuments()
+  loadFeatured()
+  loadAllTotal()
 }
 
-interface Document {
-  id: number
-  type: 'PDF' | 'DOC' | 'PPT' | 'SHEET'
-  title: string
-  excerpt: string
-  author: string
-  authorAvatar: string
-  date: string
+async function toggleFavorites() {
+  showFavorites.value = !showFavorites.value
+  filters.category_id = null
+  filters.tags = ''
+  page.value = 1
+  if (showFavorites.value) {
+    await loadFavorites()
+  } else {
+    await loadDocuments()
+    loadAllTotal()
+  }
 }
 
-const categories: Category[] = [
-  { name: '技术文档', color: '#7a3b3b', count: 34 },
-  { name: '产品需求', color: '#c4873b', count: 21 },
-  { name: '会议纪要', color: '#6b7c5e', count: 45 },
-  { name: '设计规范', color: '#5a4d3a', count: 16 },
-  { name: '周报月报', color: '#6b8db5', count: 12 },
-]
-
-const tags: string[] = ['前端开发', '后端架构', 'UI 设计', '项目管理', '数据分析']
-
-const stats: Stat[] = [
-  { label: '总文档数', value: '128', change: '+12 本月', changeType: 'up' },
-  { label: '活跃分享', value: '46', change: '+8 本周', changeType: 'up' },
-  { label: '团队成员', value: '23', change: '+3 本月', changeType: 'up' },
-  { label: '存储用量', value: '4.2<small style="font-size:0.5em;color:var(--warm-gray)">GB</small>', change: '78% 已用', changeType: 'down' },
-]
-
-const featured: Featured = {
-  title: '2026 年度产品路线图 — 核心战略与里程碑',
-  author: '彭海军',
-  updatedAt: '3 天前更新',
-  views: '2,847',
+function changePage(p: number) {
+  page.value = p
+  if (showFavorites.value) loadFavorites()
+  else loadDocuments()
 }
 
-const documents: Document[] = [
-  {
-    id: 1,
-    type: 'PDF',
-    title: '前端性能优化白皮书 v3.0',
-    excerpt: '涵盖 Core Web Vitals 优化策略、代码分割最佳实践、图片与字体加载方案的完整指南。',
-    author: '李思远',
-    authorAvatar: 'linear-gradient(135deg,#7a3b3b,#a06a28)',
-    date: '2 小时前',
-  },
-  {
-    id: 2,
-    type: 'DOC',
-    title: '用户增长策略 — Q2 复盘与 Q3 规划',
-    excerpt: '基于上半年数据表现，对获客渠道、留存策略和变现路径的深度分析与调整建议。',
-    author: '王晓涵',
-    authorAvatar: 'linear-gradient(135deg,#6b7c5e,#4a6741)',
-    date: '5 小时前',
-  },
-  {
-    id: 3,
-    type: 'PPT',
-    title: 'Design System 2.0 组件库升级提案',
-    excerpt: '从 Token 体系重构、组件 API 统一、到无障碍合规的全面升级方案。',
-    author: '赵雨萱',
-    authorAvatar: 'linear-gradient(135deg,#c4873b,#8b5e34)',
-    date: '昨天',
-  },
-  {
-    id: 4,
-    type: 'SHEET',
-    title: 'API 接口性能基准测试数据',
-    excerpt: '各核心接口在不同并发量下的响应时间、错误率及资源消耗统计。',
-    author: '陈墨白',
-    authorAvatar: 'linear-gradient(135deg,#2c2418,#5a4d3a)',
-    date: '昨天',
-  },
-  {
-    id: 5,
-    type: 'PDF',
-    title: '微服务架构迁移可行性评估报告',
-    excerpt: '对现有单体架构拆分为微服务的技术评估，包含成本分析和分阶段迁移路径。',
-    author: '刘浩然',
-    authorAvatar: 'linear-gradient(135deg,#6b8db5,#4a6b8a)',
-    date: '3 天前',
-  },
-  {
-    id: 6,
-    type: 'DOC',
-    title: '移动端适配规范与多端一致性方案',
-    excerpt: '覆盖 iOS/Android/H5 三端的 UI 适配标准、交互差异处理及自动化测试策略。',
-    author: '林紫薇',
-    authorAvatar: 'linear-gradient(135deg,#7a3b3b,#5a2828)',
-    date: '4 天前',
-  },
-]
+async function loadDocuments() {
+  loading.value = true
+  try {
+    const params: Record<string, unknown> = { page: page.value, pageSize: pageSize.value }
+    if (filters.title) params.title = filters.title
+    if (filters.category_id) params.category_id = filters.category_id
+    if (filters.tags) params.tags = filters.tags
+
+    const { data } = await listDocs(params)
+    documents.value = (data.items || []).map((d: DocItem) => ({ ...d, isFavorited: false }))
+    total.value = data.total
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadAllTotal() {
+  try {
+    const { data } = await listDocs({ page: 1, pageSize: 1 })
+    allTotal.value = data.total
+  } catch { /* empty */ }
+}
+
+async function loadFavorites() {
+  loading.value = true
+  try {
+    const { data } = await favoriteApi.list(page.value, pageSize.value)
+    documents.value = (data.items || []).map((d: DocItem) => ({ ...d, isFavorited: true }))
+    total.value = data.total
+  } catch {
+    documents.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadFeatured() {
+  try {
+    const { data } = await listDocs({ is_featured: '1', pageSize: 1 })
+    featured.value = data.items?.[0] || null
+  } catch {
+    featured.value = null
+  }
+}
+
+async function handleFavorite(doc: DocItem) {
+  if (!authStore.isAuthenticated) {
+    router.push('/login')
+    return
+  }
+  try {
+    const { data } = await favoriteApi.toggle(doc.id)
+    doc.isFavorited = data.favorited
+    loadFavTotal()
+  } catch { /* empty */ }
+}
+
+async function loadFavTotal() {
+  try {
+    const { data } = await favoriteApi.list(1, 1)
+    favTotal.value = data.total
+  } catch { /* empty */ }
+}
+
+function openDoc(doc: DocItem) {
+  const viewableTypes = ['txt', 'plain', 'pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico']
+  const t = doc.file_type?.toLowerCase() || ''
+  if (viewableTypes.includes(t)) {
+    router.push(`/docs/${doc.id}`)
+  } else if (doc.file_url) {
+    window.open(doc.file_url, '_blank')
+  }
+}
+
+async function loadStats() {
+  try {
+    const { data: statsData } = await getStats()
+    dashboardStats.value = statsData
+  } catch { /* empty */ }
+}
+
+async function onUploadClose() {
+  showUpload.value = false
+  await loadDocuments()
+  loadFeatured()
+  loadFavTotal()
+  loadAllTotal()
+  await loadStats()
+  try {
+    const { data: catData } = await getCategories()
+    categories.value = catData
+  } catch { /* empty */ }
+}
+
+function handleLogout() {
+  showLogout.value = false
+  authStore.logout()
+  router.push('/login')
+}
+
+function onClickOutside(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (!target.closest('.avatar-wrapper')) {
+    showLogout.value = false
+  }
+}
+
+function formatDate(d: string) {
+  if (!d) return ''
+  return new Date(d).toLocaleDateString('zh-CN')
+}
+
+function formatSize(bytes: number): string {
+  if (!bytes) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+}
+
+function avatarColor(name: string): string {
+  if (!name) return '#999'
+  const colors = ['linear-gradient(135deg,#7a3b3b,#a06a28)', 'linear-gradient(135deg,#6b7c5e,#4a6741)', 'linear-gradient(135deg,#c4873b,#8b5e34)', 'linear-gradient(135deg,#2c2418,#5a4d3a)', 'linear-gradient(135deg,#6b8db5,#4a6b8a)']
+  return colors[name.charCodeAt(0) % colors.length]
+}
+
+function handleResize() {
+  const mobile = window.innerWidth < 900
+  isMobile.value = mobile
+  if (!mobile) {
+    mobileMenuOpen.value = false
+    mobileSidebarOpen.value = false
+  }
+}
+
+onMounted(async () => {
+  document.addEventListener('click', onClickOutside)
+  window.addEventListener('resize', handleResize)
+  handleResize()
+  try {
+    const { data: catData } = await getCategories()
+    categories.value = catData
+  } catch { /* empty */ }
+  try {
+    const { data: tagData } = await getTags()
+    tags.value = tagData
+  } catch { /* empty */ }
+  await loadStats()
+  await loadDocuments()
+  loadAllTotal()
+  await loadFeatured()
+  if (authStore.isAuthenticated) {
+    loadFavTotal()
+  }
+
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onClickOutside)
+  window.removeEventListener('resize', handleResize)
+})
 </script>
 
 <style scoped>
@@ -419,7 +737,6 @@ const documents: Document[] = [
   --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
 }
 
-/* GRAIN OVERLAY */
 .document-library::after {
   content: '';
   position: fixed;
@@ -431,7 +748,6 @@ const documents: Document[] = [
   opacity: 0.5;
 }
 
-/* TOP BAR */
 .topbar {
   position: fixed;
   top: 0;
@@ -516,9 +832,7 @@ const documents: Document[] = [
   gap: 16px;
 }
 
-.search-box {
-  position: relative;
-}
+.search-box { position: relative; }
 
 .search-box input {
   background: rgba(255, 255, 255, 0.08);
@@ -533,9 +847,7 @@ const documents: Document[] = [
   outline: none;
 }
 
-.search-box input::placeholder {
-  color: var(--warm-gray);
-}
+.search-box input::placeholder { color: var(--warm-gray); }
 
 .search-box input:focus {
   width: 300px;
@@ -603,8 +915,79 @@ const documents: Document[] = [
   transition: transform 0.2s;
 }
 
-.avatar:hover {
-  transform: scale(1.08);
+.avatar:hover { transform: scale(1.08); }
+
+.avatar-wrapper {
+  position: relative;
+  z-index: 100;
+}
+
+.avatar-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 180px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+  overflow: hidden;
+  z-index: 200;
+}
+
+.dropdown-user {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dropdown-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.dropdown-role {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.dropdown-item:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.dropdown-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 /* SIDEBAR */
@@ -621,23 +1004,11 @@ const documents: Document[] = [
   z-index: 50;
 }
 
-.sidebar::-webkit-scrollbar {
-  width: 4px;
-}
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--warm-gray); border-radius: 2px; }
 
-.sidebar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.sidebar::-webkit-scrollbar-thumb {
-  background: var(--warm-gray);
-  border-radius: 2px;
-}
-
-.sidebar-section {
-  margin-bottom: 28px;
-  padding: 0 20px;
-}
+.sidebar-section { margin-bottom: 28px; padding: 0 20px; }
 
 .sidebar-title {
   font-family: 'DM Sans', sans-serif;
@@ -650,9 +1021,7 @@ const documents: Document[] = [
   padding-left: 12px;
 }
 
-.sidebar-list {
-  list-style: none;
-}
+.sidebar-list { list-style: none; }
 
 .sidebar-list li a {
   display: flex;
@@ -691,17 +1060,10 @@ const documents: Document[] = [
   border-radius: 0 2px 2px 0;
 }
 
-.sidebar-icon {
-  width: 20px;
-  height: 20px;
-  opacity: 0.7;
-  flex-shrink: 0;
-}
+.sidebar-icon { width: 20px; height: 20px; opacity: 0.7; flex-shrink: 0; }
 
 .sidebar-list li a:hover .sidebar-icon,
-.sidebar-list li a.active .sidebar-icon {
-  opacity: 1;
-}
+.sidebar-list li a.active .sidebar-icon { opacity: 1; }
 
 .sidebar-count {
   margin-left: auto;
@@ -731,23 +1093,11 @@ const documents: Document[] = [
   padding: 36px 40px;
 }
 
-.main::-webkit-scrollbar {
-  width: 6px;
-}
+.main::-webkit-scrollbar { width: 6px; }
+.main::-webkit-scrollbar-track { background: transparent; }
+.main::-webkit-scrollbar-thumb { background: var(--warm-gray); border-radius: 3px; }
 
-.main::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.main::-webkit-scrollbar-thumb {
-  background: var(--warm-gray);
-  border-radius: 3px;
-}
-
-.page-header {
-  margin-bottom: 36px;
-  animation: fadeUp 0.6s ease both;
-}
+.page-header { margin-bottom: 36px; animation: fadeUp 0.6s ease both; }
 
 .page-header h1 {
   font-family: 'Playfair Display', serif;
@@ -776,9 +1126,7 @@ const documents: Document[] = [
   transition: transform 0.3s ease;
 }
 
-.featured:hover {
-  transform: translateY(-2px);
-}
+.featured:hover { transform: translateY(-2px); }
 
 .featured::before {
   content: '';
@@ -860,19 +1208,7 @@ const documents: Document[] = [
   font-weight: 600;
 }
 
-.section-header a {
-  font-size: 0.82rem;
-  color: var(--amber);
-  text-decoration: none;
-  font-weight: 500;
-  transition: color 0.2s;
-}
-
-.section-header a:hover {
-  color: var(--amber-deep);
-}
-
-/* DOC CARDS GRID */
+/* DOC CARDS */
 .doc-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -892,13 +1228,6 @@ const documents: Document[] = [
   animation: fadeUp 0.5s ease both;
 }
 
-.doc-card:nth-child(1) { animation-delay: 0.25s; }
-.doc-card:nth-child(2) { animation-delay: 0.3s; }
-.doc-card:nth-child(3) { animation-delay: 0.35s; }
-.doc-card:nth-child(4) { animation-delay: 0.4s; }
-.doc-card:nth-child(5) { animation-delay: 0.45s; }
-.doc-card:nth-child(6) { animation-delay: 0.5s; }
-
 .doc-card::before {
   content: '';
   position: absolute;
@@ -912,15 +1241,47 @@ const documents: Document[] = [
   transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.doc-card:hover::before {
-  transform: scaleX(1);
-}
+.doc-card:hover::before { transform: scaleX(1); }
 
 .doc-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 40px rgba(44, 36, 24, 0.08);
   border-color: rgba(196, 135, 59, 0.2);
 }
+
+.doc-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.doc-card h3 {
+  font-family: 'Source Serif 4', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 8px;
+  line-height: 1.4;
+  transition: color 0.2s;
+}
+
+.doc-card:hover h3 { color: var(--amber-deep); }
+
+.fav-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: var(--warm-gray);
+  padding: 0 4px;
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.fav-btn.favorited { color: #e8b730; }
+
+.fav-btn:hover { color: #e8b730; }
 
 .doc-type {
   display: inline-flex;
@@ -935,39 +1296,10 @@ const documents: Document[] = [
   margin-bottom: 14px;
 }
 
-.doc-type.pdf {
-  background: rgba(122, 59, 59, 0.08);
-  color: var(--burgundy);
-}
-
-.doc-type.doc {
-  background: rgba(107, 124, 94, 0.1);
-  color: var(--sage);
-}
-
-.doc-type.ppt {
-  background: rgba(196, 135, 59, 0.1);
-  color: var(--amber-deep);
-}
-
-.doc-type.sheet {
-  background: rgba(44, 36, 24, 0.06);
-  color: var(--ink-light);
-}
-
-.doc-card h3 {
-  font-family: 'Source Serif 4', serif;
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin-bottom: 8px;
-  line-height: 1.4;
-  transition: color 0.2s;
-}
-
-.doc-card:hover h3 {
-  color: var(--amber-deep);
-}
+.doc-type.pdf { background: rgba(122, 59, 59, 0.08); color: var(--burgundy); }
+.doc-type.doc, .doc-type.docx { background: rgba(107, 124, 94, 0.1); color: var(--sage); }
+.doc-type.txt { background: rgba(107, 141, 181, 0.1); color: #6b8db5; }
+.doc-type.jpg, .doc-type.jpeg, .doc-type.png, .doc-type.gif { background: rgba(107, 124, 94, 0.1); color: var(--sage); }
 
 .doc-card .excerpt {
   font-size: 0.84rem;
@@ -988,11 +1320,7 @@ const documents: Document[] = [
   border-top: 1px solid rgba(0, 0, 0, 0.04);
 }
 
-.doc-author {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.doc-author { display: flex; align-items: center; gap: 8px; }
 
 .doc-author-avatar {
   width: 24px;
@@ -1006,17 +1334,11 @@ const documents: Document[] = [
   color: #fff;
 }
 
-.doc-author span {
-  font-size: 0.8rem;
-  color: var(--ink-light);
-}
+.doc-author span { font-size: 0.8rem; color: var(--ink-light); }
 
-.doc-date {
-  font-size: 0.76rem;
-  color: var(--warm-gray);
-}
+.doc-date { font-size: 0.76rem; color: var(--warm-gray); }
 
-/* STATS ROW */
+/* STATS */
 .stats-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1054,44 +1376,157 @@ const documents: Document[] = [
   color: var(--ink);
 }
 
-.stat-change {
-  font-size: 0.78rem;
-  margin-top: 4px;
-  font-weight: 500;
-}
-
-.stat-change.up {
-  color: var(--sage);
-}
-
-.stat-change.down {
-  color: var(--burgundy);
-}
+.stat-change { font-size: 0.78rem; margin-top: 4px; font-weight: 500; }
+.stat-change.up { color: var(--sage); }
+.stat-change.down { color: var(--burgundy); }
 
 /* ANIMATIONS */
 @keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* RESPONSIVE */
+/* ── HAMBURGER ── */
+.hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  margin-right: 8px;
+}
+.hamburger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--parchment);
+  border-radius: 1px;
+  transition: all 0.25s;
+}
+
+/* ── MOBILE NAV OVERLAY ── */
+.mobile-nav-overlay {
+  position: fixed;
+  inset: 0;
+  top: var(--topbar-h);
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 150;
+}
+.mobile-nav-panel {
+  background: var(--ink);
+  padding: 8px 0;
+}
+.mobile-nav-link {
+  display: block;
+  padding: 14px 24px;
+  color: var(--warm-gray);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mobile-nav-link:hover {
+  color: var(--parchment);
+  background: rgba(196, 135, 59, 0.12);
+}
+
+/* ── SLIDE ANIMATIONS ── */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* ── SIDEBAR TOGGLE ── */
+.sidebar-toggle {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 130;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--amber);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(196, 135, 59, 0.35);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.sidebar-toggle span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: #fff;
+  border-radius: 1px;
+}
+.sidebar-close {
+  display: none;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--parchment);
+  font-size: 1rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── RESPONSIVE ── */
 @media (max-width: 900px) {
+  .hamburger { display: flex; }
+  .top-nav { display: none; }
+  .search-box input { width: 140px; }
+  .search-box input:focus { width: 200px; }
   .sidebar {
-    display: none;
+    display: flex;
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    bottom: 0;
+    z-index: 140;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
   }
+  .sidebar--open { transform: translateX(0); }
+  .sidebar-close { display: flex; }
+  .sidebar-toggle { display: flex; }
+  .main { margin-left: 0; }
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+  .doc-grid { grid-template-columns: 1fr; }
+  .featured { padding: 32px 24px; }
+  .featured h2 { font-size: 1.2rem; }
+}
 
-  .main {
-    margin-left: 0;
-  }
-
-  .stats-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
+@media (max-width: 640px) {
+  .topbar-inner { padding: 0 16px; }
+  .stats-row { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 1.25rem; }
+  .page-header { padding: 20px 16px 16px; }
+  .main-content { padding: 0 8px 40px; }
+  .btn-upload { padding: 8px 16px; font-size: 0.8rem; }
+  .btn-admin { display: none; }
+  .logo { font-size: 1.1rem; }
 }
 </style>

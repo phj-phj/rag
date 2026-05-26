@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>最近文档 — Papier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #2c2418;
+  --ink-light: #5a4d3a;
+  --parchment: #f5f0e8;
+  --cream: #ece5d8;
+  --amber: #c4873b;
+  --amber-deep: #a06a28;
+  --amber-glow: #d97706;
+  --warm-gray: #b8ae9e;
+  --card-white: #fff;
+  --border: #e8e2d7;
+  --text-primary: #1a1815;
+  --text-secondary: #5c554a;
+  --text-muted: #9c9488;
+  --burgundy: #7a3b3b;
+  --sage: #6b7c5e;
+  --blue-slate: #6b8db5;
+  --topbar-h: 64px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--parchment);
+  color: var(--text-primary);
+  min-height: 100vh;
+  padding-top: var(--topbar-h);
+}
+
+/* ── Top Bar ── */
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  height: var(--topbar-h);
+  background: var(--ink);
+  display: flex;
+  align-items: center;
+  padding: 0 32px;
+  border-bottom: 2px solid var(--amber);
+}
+.logo {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--parchment);
+  letter-spacing: 0.04em;
+  margin-right: 48px;
+  text-decoration: none;
+  position: relative;
+  flex-shrink: 0;
+}
+.logo em {
+  color: var(--amber);
+  font-style: italic;
+}
+
+/* ── Nav ── */
+.top-nav {
+  display: flex;
+  list-style: none;
+  gap: 2px;
+  margin-left: 40px;
+}
+.top-nav a {
+  display: block;
+  padding: 8px 18px;
+  border-radius: 6px;
+  color: var(--warm-gray);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.top-nav a:hover,
+.top-nav a.active {
+  color: var(--parchment);
+  background: rgba(196, 135, 59, 0.15);
+}
+
+/* ── Right Side ── */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-box svg {
+  position: absolute;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  color: var(--warm-gray);
+  pointer-events: none;
+}
+.search-box input {
+  width: 200px;
+  padding: 8px 14px 8px 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: var(--parchment);
+  font-size: 0.8rem;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.25s;
+}
+.search-box input::placeholder { color: rgba(255,255,255,0.3); }
+.search-box input:focus {
+  width: 260px;
+  border-color: var(--amber);
+  background: rgba(255,255,255,0.1);
+}
+
+.btn-upload {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  background: var(--amber);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-upload:hover { background: var(--amber-deep); transform: translateY(-1px); }
+
+.avatar-wrapper { position: relative; z-index: 200; }
+.avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--amber-glow), #92400e);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(217,119,6,0.25);
+  transition: transform 0.2s;
+}
+.avatar:hover { transform: scale(1.06); }
+.avatar-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 180px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+  overflow: hidden;
+}
+.avatar-wrapper:hover .avatar-dropdown,
+.avatar-dropdown:hover { display: block; }
+.dropdown-user {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.dropdown-name { font-size: 0.9rem; font-weight: 600; color: #111827; }
+.dropdown-role { font-size: 0.75rem; color: #9ca3af; margin-top: 2px; }
+.dropdown-item {
+  width: 100%;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  font-size: 0.85rem; color: #6b7280;
+  background: none; border: none; cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.dropdown-item:hover { background: #fef2f2; color: #dc2626; }
+
+/* ── Hamburger ── */
+.hamburger {
+  display: none;
+  flex-direction: column; gap: 4px;
+  background: none; border: none; cursor: pointer;
+  padding: 8px;
+}
+.hamburger span {
+  width: 22px; height: 2px;
+  background: var(--parchment);
+  border-radius: 1px;
+}
+
+/* ── Mobile Nav ── */
+.mobile-nav-overlay {
+  display: none;
+  position: fixed;
+  top: var(--topbar-h);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 150;
+}
+.mobile-nav-overlay.open { display: block; }
+.mobile-nav-panel {
+  background: var(--ink);
+  padding: 8px 0;
+}
+.mobile-nav-link {
+  display: block;
+  padding: 14px 24px;
+  color: var(--warm-gray);
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: all 0.15s;
+}
+.mobile-nav-link:hover,
+.mobile-nav-link.active {
+  color: var(--parchment);
+  background: rgba(196,135,59,0.12);
+}
+
+/* ── Main ── */
+.main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 32px 80px;
+}
+
+.page-header {
+  padding: 48px 0 12px;
+}
+.page-header h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', serif;
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+}
+.page-header p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* ── Empty State ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 20px;
+  text-align: center;
+}
+.empty-state .empty-icon {
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  background: var(--cream);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 24px;
+  color: var(--warm-gray);
+}
+.empty-state .empty-icon svg {
+  width: 36px; height: 36px;
+  stroke-width: 1.5;
+}
+.empty-state h3 {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.empty-state p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+.empty-state .btn-upload-large {
+  padding: 12px 32px;
+  border-radius: 10px;
+  border: none;
+  background: var(--amber);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.empty-state .btn-upload-large:hover {
+  background: var(--amber-deep);
+  transform: translateY(-1px);
+}
+
+/* ── Doc Grid ── */
+.doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+  margin-top: 28px;
+}
+.doc-card {
+  background: var(--card-white);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 22px 24px 18px;
+  cursor: pointer;
+  transition: all 0.25s;
+  position: relative;
+  overflow: hidden;
+  animation: fadeUp 0.45s ease both;
+}
+.doc-card:nth-child(1) { animation-delay: 0s; }
+.doc-card:nth-child(2) { animation-delay: 0.06s; }
+.doc-card:nth-child(3) { animation-delay: 0.12s; }
+.doc-card:nth-child(4) { animation-delay: 0.18s; }
+.doc-card:nth-child(5) { animation-delay: 0.24s; }
+.doc-card:nth-child(6) { animation-delay: 0.30s; }
+.doc-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+  border-color: var(--amber);
+}
+.doc-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 3px;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.doc-card:hover::before { opacity: 1; }
+
+.doc-type-badge {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 3px;
+  margin-bottom: 14px;
+}
+.doc-type-badge.pdf { background: rgba(122,59,59,0.08); color: var(--burgundy); }
+.doc-type-badge.doc,
+.doc-type-badge.docx { background: rgba(107,124,94,0.1); color: var(--sage); }
+.doc-type-badge.txt { background: rgba(107,141,181,0.1); color: var(--blue-slate); }
+
+.doc-card h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.doc-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.doc-meta-dot {
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: var(--amber);
+  opacity: 0.5;
+}
+
+.card-top-stripe {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+}
+.card-top-stripe.pdf { background: var(--burgundy); }
+.card-top-stripe.doc,
+.card-top-stripe.docx { background: var(--sage); }
+.card-top-stripe.txt { background: var(--blue-slate); }
+
+/* ── Pagination ── */
+.pagination {
+  display: flex; align-items: center; justify-content: center;
+  gap: 6px;
+  margin-top: 40px;
+}
+.pagination button {
+  min-width: 36px; height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card-white);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.pagination button:hover { border-color: var(--amber); }
+.pagination button.active {
+  background: var(--amber);
+  color: #fff;
+  border-color: var(--amber);
+}
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Toggle Switch ── */
+.view-toggle {
+  margin-top: 24px;
+  text-align: right;
+}
+.view-toggle label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.view-toggle input { cursor: pointer; }
+
+/* ── Animations ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .top-nav { display: none; }
+  .hamburger { display: flex; }
+  .search-box input { width: 140px; }
+  .search-box input:focus { width: 180px; }
+  .doc-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .topbar { padding: 0 16px; }
+  .main { padding: 0 16px 60px; }
+  .page-header { padding: 28px 0 8px; }
+  .page-header h1 { font-size: 1.4rem; }
+  .btn-upload { padding: 6px 14px; font-size: 0.78rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header class="topbar">
+  <button class="hamburger" id="hamburger" onclick="toggleMobileNav()">
+    <span></span><span></span><span></span>
+  </button>
+  <a href="#" class="logo">Pap<em>ier</em></a>
+  <ul class="top-nav">
+    <li><a href="#">文档库</a></li>
+    <li><a href="#">集合</a></li>
+    <li><a href="#" class="active">最近</a></li>
+    <li><a href="#">共享给我</a></li>
+    <li><a href="#">每日训练</a></li>
+  </ul>
+  <div class="topbar-right">
+    <div class="search-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" placeholder="搜索文档...">
+    </div>
+    <button class="btn-upload">+ 上传文档</button>
+    <div class="avatar-wrapper">
+      <div class="avatar">A</div>
+      <div class="avatar-dropdown">
+        <div class="dropdown-user">
+          <div class="dropdown-name">admin</div>
+          <div class="dropdown-role">管理员</div>
+        </div>
+        <button class="dropdown-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          退出登录
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- MOBILE NAV OVERLAY -->
+<div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="toggleMobileNav()">
+  <nav class="mobile-nav-panel" onclick="event.stopPropagation()">
+    <a href="#" class="mobile-nav-link">文档库</a>
+    <a href="#" class="mobile-nav-link active">最近</a>
+    <a href="#" class="mobile-nav-link">集合</a>
+    <a href="#" class="mobile-nav-link">共享给我</a>
+    <a href="#" class="mobile-nav-link">每日训练</a>
+  </nav>
+</div>
+
+<!-- MAIN -->
+<main class="main">
+  <div class="page-header">
+    <h1>最近文档</h1>
+    <p>你最近上传的文档</p>
+  </div>
+
+  <div class="view-toggle">
+    <label>
+      <input type="checkbox" id="showEmpty" onchange="toggleView()"> 显示空状态
+    </label>
+  </div>
+
+  <!-- Document Grid -->
+  <div id="docGrid" class="doc-grid">
+    <div class="doc-card" style="--stripe:var(--burgundy)">
+      <div class="card-top-stripe pdf"></div>
+      <span class="doc-type-badge pdf">PDF</span>
+      <h3>AI 大前端全栈学习路线（26年最新版）</h3>
+      <div class="doc-meta">
+        <span>admin</span>
+        <span class="doc-meta-dot"></span>
+        <span>2 小时前</span>
+      </div>
+    </div>
+
+    <div class="doc-card">
+      <div class="card-top-stripe docx"></div>
+      <span class="doc-type-badge docx">DOCX</span>
+      <h3>2026年Q2技术规划与里程碑方案</h3>
+      <div class="doc-meta">
+        <span>zhangsan</span>
+        <span class="doc-meta-dot"></span>
+        <span>昨天</span>
+      </div>
+    </div>
+
+    <div class="doc-card">
+      <div class="card-top-stripe txt"></div>
+      <span class="doc-type-badge txt">TXT</span>
+      <h3>会议纪要 — 产品需求评审（第12期）</h3>
+      <div class="doc-meta">
+        <span>lisi</span>
+        <span class="doc-meta-dot"></span>
+        <span>昨天</span>
+      </div>
+    </div>
+
+    <div class="doc-card">
+      <div class="card-top-stripe pdf"></div>
+      <span class="doc-type-badge pdf">PDF</span>
+      <h3>Vue 3 Composition API 深度实战笔记</h3>
+      <div class="doc-meta">
+        <span>admin</span>
+        <span class="doc-meta-dot"></span>
+        <span>3 天前</span>
+      </div>
+    </div>
+
+    <div class="doc-card">
+      <div class="card-top-stripe docx"></div>
+      <span class="doc-type-badge docx">DOCX</span>
+      <h3>前后端分离架构设计方案 v3.0</h3>
+      <div class="doc-meta">
+        <span>wangwu</span>
+        <span class="doc-meta-dot"></span>
+        <span>5 天前</span>
+      </div>
+    </div>
+
+    <div class="doc-card">
+      <div class="card-top-stripe txt"></div>
+      <span class="doc-type-badge txt">TXT</span>
+      <h3>MySQL 性能优化排查记录</h3>
+      <div class="doc-meta">
+        <span>admin</span>
+        <span class="doc-meta-dot"></span>
+        <span>1 周前</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty State (hidden by default) -->
+  <div id="emptyState" class="empty-state" style="display:none;">
+    <div class="empty-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+        <polyline points="13 2 13 9 20 9"/>
+        <line x1="12" y1="16" x2="12" y2="12"/>
+      </svg>
+    </div>
+    <h3>还没有上传任何文档</h3>
+    <p>点击上方按钮开始上传你的第一个文档</p>
+    <button class="btn-upload-large">+ 上传文档</button>
+  </div>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    <button disabled>‹</button>
+    <button class="active">1</button>
+    <button>2</button>
+    <button>3</button>
+    <button>›</button>
+  </div>
+</main>
+
+<script>
+function toggleMobileNav() {
+  document.getElementById('mobileNavOverlay').classList.toggle('open');
+}
+function toggleView() {
+  var checked = document.getElementById('showEmpty').checked;
+  document.getElementById('docGrid').style.display = checked ? 'none' : 'grid';
+  document.getElementById('emptyState').style.display = checked ? 'flex' : 'none';
+  document.querySelector('.pagination').style.display = checked ? 'none' : 'flex';
+}
+</script>
+</body>
+</html>
