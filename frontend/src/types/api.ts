@@ -54,15 +54,13 @@ export interface DocumentListParams {
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
-  docId?: number
-  docTitle?: string
+  docs?: { id: number; title: string }[]    // RAG 检索到的文档来源
 }
 
 export interface ChatAskResponse {
   answer: string
   model: string
-  docId: number
-  docTitle: string
+  docs: { id: number; title: string }[]
 }
 
 // ── 用户管理 ──

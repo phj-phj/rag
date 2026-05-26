@@ -6,6 +6,8 @@ import { Document, Category, Tag, User, DocumentChunk } from '../models'
 import { deleteFile, getFileUrl } from '../services/file.service'
 import { extractDocxText, extractDocxImages, extractDocxHtml, extractPdfText, extractPdfHtml, cleanText, getDocumentTextForChunking } from '../services/extraction.service'
 import { splitIntoChunks } from '../services/chunking.service'
+import { embedTexts } from '../services/embedding.service'
+import { indexChunks, deleteDocumentChunks } from '../services/retrieval.service'
 
 function docToJson(doc: Document): Record<string, unknown> {
   const d = (doc.toJSON() as unknown) as Record<string, unknown>
@@ -162,14 +164,14 @@ export async function create(req: Request, res: Response): Promise<void> {
 
 async function chunkDocument(docId: number, filePath: string, fileType: string): Promise<void> {
   try {
-    const fullPath = path.resolve(__dirname, '../../', filePath)
+    const fullPath = path.resolve(process.cwd(), filePath)
     const text = await getDocumentTextForChunking(fullPath, fileType)
     if (!text) return
 
     const chunks = await splitIntoChunks(text)
     if (chunks.length === 0) return
 
-    await Promise.all(
+    const rows = await Promise.all(
       chunks.map(c =>
         DocumentChunk.create({
           document_id: docId,
@@ -184,7 +186,21 @@ async function chunkDocument(docId: number, filePath: string, fileType: string):
       )
     )
 
-    console.log(`[RAG] 文档 ${docId} 切块完成：${chunks.length} 块`)
+    console.log(`[RAG] 文档 ${docId} 切块完成：${rows.length} 块`)
+
+    // 向量化 + 写入 LanceDB
+    const texts = rows.map(r => r.content)
+    const embeddings = await embedTexts(texts)
+    await indexChunks(
+      rows.map((r, i) => ({
+        id: r.id,
+        document_id: docId,
+        content: r.content,
+        embedding: embeddings[i],
+      }))
+    )
+
+    console.log(`[RAG] 文档 ${docId} 向量化+索引完成：${embeddings.length} 个向量`)
   } catch (err) {
     console.error(`[RAG] 文档 ${docId} 切块失败:`, (err as Error).message)
   }
@@ -203,6 +219,9 @@ export async function remove(req: Request, res: Response): Promise<void> {
     return
   }
 
+  // 级联清理 RAG 数据
+  await deleteDocumentChunks(doc.id)
+  await DocumentChunk.destroy({ where: { document_id: doc.id } })
   await deleteFile(doc.file_path)
   await doc.destroy()
 

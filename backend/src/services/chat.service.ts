@@ -7,14 +7,29 @@ interface ChatResult {
   model: string
 }
 
-export async function askDocument(question: string, documentContent: string): Promise<ChatResult> {
-  const messages = [
-    {
-      role: 'system',
-      content: `你是一个文档助手，请根据以下内容简洁回答用户问题。要求：\n1. 回答尽量简短，控制在 3-5 句话以内\n2. 不要使用表格、代码块等复杂格式，用纯文本表述\n3. 如果找不到答案就说不知道\n\n文档内容：\n${documentContent}`,
-    },
-    { role: 'user', content: question },
-  ]
+interface ChunkInput {
+  title: string
+  content: string
+  score: number
+}
+
+export async function askDocument(
+  question: string,
+  chunks: ChunkInput[],
+): Promise<ChatResult> {
+  const chunksText = chunks.map((c, i) =>
+    `[片段${i + 1}，来源：《${c.title}》，相关度：${c.score.toFixed(3)}]\n${c.content}`
+  ).join('\n\n---\n\n')
+
+  const systemPrompt = `你是 Papier 文档助手。根据以下文档片段回答用户问题。
+
+要求：
+1. 回答简洁，控制在 3-5 句话以内
+2. 如果答案来自某个片段，请指出来源于哪个文档
+3. 如果所有片段都不包含答案，请说"当前文档库中未找到相关信息"
+
+参考片段：
+${chunksText}`
 
   const res = await fetch(`${BASE_URL}/chat/completions`, {
     method: 'POST',
@@ -24,7 +39,10 @@ export async function askDocument(question: string, documentContent: string): Pr
     },
     body: JSON.stringify({
       model: MODEL,
-      messages,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: question },
+      ],
       temperature: 0.3,
       max_tokens: 500,
     }),

@@ -283,6 +283,43 @@ export async function extractPdfHtml(filePath: string): Promise<string> {
   return textToHtml(text)
 }
 
+// ── RAG 文本深度清洗 ──
+
+/**
+ * 去除 PDF 提取中的噪音：代码复制按钮、纯代码行、HTML 标签碎片
+ */
+export function cleanForRag(text: string): string {
+  return text
+    // 去掉 "XXX复制代码" 类噪音（中文技术站代码块标题，中英文混合）
+    .replace(/[a-zA-Z]*复制代码[a-zA-Z]*/g, '')
+    // 去掉 HTML/CSS/JS/Vue 等语言标签后的"复制代码"
+    .replace(/(HTML|CSS|JavaScript|JS|TypeScript|Vue|React|Python|Java|Go|Rust|Shell|Bash|SQL|JSON|XML)\s*复制代码/g, '')
+    // 去掉纯代码行（特殊字符占比 > 50% 的行）
+    .split('\n')
+    .filter(line => {
+      const trimmed = line.trim()
+      if (!trimmed) return false
+      // 行太短无意义
+      if (trimmed.length < 4) return false
+      // 全是符号/数字的行（代码）
+      const alpha = (trimmed.match(/[a-zA-Z一-鿿]/g) || []).length
+      if (alpha / trimmed.length < 0.3) return false
+      // HTML 标签碎片
+      if (/^<[\/]?\w+[^>]*>$/.test(trimmed)) return false
+      // 纯 URL
+      if (/^https?:\/\/\S+$/.test(trimmed)) return false
+      return true
+    })
+    .join('\n')
+    // 去掉残留的 {{ }} 模板语法碎片
+    .replace(/\{\{[^}]*\}\}/g, '')
+    // 去掉连续的特殊字符
+    .replace(/[<>{}()[\]&|~`@#$%^&*+=]{4,}/g, '')
+    // 合并多余空白
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 // ── RAG 切块用：根据文件类型提取纯文本 ──
 
 export async function getDocumentTextForChunking(
@@ -292,16 +329,18 @@ export async function getDocumentTextForChunking(
   const type = fileType.toLowerCase()
 
   try {
+    let text = ''
     if (type === 'txt' || type === 'plain') {
-      return cleanText(await readFile(filePath, 'utf-8'))
+      text = cleanText(await readFile(filePath, 'utf-8'))
+    } else if (type === 'pdf') {
+      text = await extractPdfText(filePath)
+    } else if (type === 'docx' || type === 'doc') {
+      text = await extractDocxText(filePath)
+    } else {
+      return null // 图片等不支持切块
     }
-    if (type === 'pdf') {
-      return await extractPdfText(filePath)
-    }
-    if (type === 'docx' || type === 'doc') {
-      return await extractDocxText(filePath)
-    }
-    return null // 图片等不支持切块
+    // 深度清洗噪音后再用于切块
+    return cleanForRag(text)
   } catch (err) {
     console.error(`[chunking] 提取文本失败 (${fileType}):`, (err as Error).message)
     return null

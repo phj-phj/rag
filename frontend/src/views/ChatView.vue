@@ -87,11 +87,12 @@
                 v-html="renderContent(msg)"
               />
               <button
-                v-if="msg.role === 'assistant' && msg.docId"
+                v-for="doc in msg.docs"
+                :key="doc.id"
                 class="doc-source-link"
-                @click="openDoc(msg.docId)"
+                @click="openDoc(doc.id, doc.title)"
               >
-                来源：{{ msg.docTitle }}
+                来源：{{ doc.title }}
               </button>
             </div>
             <div
@@ -209,11 +210,9 @@ function renderContent(msg: ChatMessage): string {
   return msg.content
 }
 
-function openDoc(docId?: number) {
-  if (!docId) return
+function openDoc(docId: number, docTitle: string) {
   splitDocId.value = docId
-  const msg = messages.value.find((m) => m.docId === docId)
-  splitDocTitle.value = msg?.docTitle || '文档查看'
+  splitDocTitle.value = docTitle
 }
 
 function closeDoc() {
@@ -234,8 +233,7 @@ async function handleAsk() {
     messages.value.push({
       role: 'assistant',
       content: data.answer,
-      docId: data.docId,
-      docTitle: data.docTitle,
+      docs: data.docs || [],
     })
   } catch {
     messages.value.push({ role: 'assistant', content: '抱歉，AI 服务暂时不可用，请稍后重试。' })
