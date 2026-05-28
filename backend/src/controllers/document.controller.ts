@@ -116,7 +116,7 @@ export async function create(req: Request, res: Response): Promise<void> {
     try {
       const parsed = typeof tagsStr === 'string' ? JSON.parse(tagsStr) : tagsStr
       tagIds = Array.isArray(parsed) ? parsed : []
-    } catch {
+    } catch { 
       tagIds = []
     }
   }

@@ -236,8 +236,10 @@ function adjustGroups(groups: SentenceMeta[][], minSize: number, maxSize: number
 
 function makeChunk(sentences: SentenceMeta[], index: number, strategy: 'semantic' | 'paragraph'): ChunkResult {
   const content = sentences.map(s => s.text).join('')
-  return { index, content, tokenCount: estimateTokens(content),
-    heading: sentences[0]?.heading || null, positionStart: 0, positionEnd: content.length, strategy }
+  return {
+    index, content, tokenCount: estimateTokens(content),
+    heading: sentences[0]?.heading || null, positionStart: 0, positionEnd: content.length, strategy
+  }
 }
 
 function estimateTokens(text: string): number {
