@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { askDocument, askDocumentStream } from '../services/chat.service'
+import { askDocument, askDocumentStream, askDocumentForTraining } from '../services/chat.service'
 import { retrieve } from '../services/retrieval.service'
 
 export async function ask(req: Request, res: Response): Promise<void> {
@@ -116,4 +116,69 @@ export async function askStream(req: Request, res: Response): Promise<void> {
     res.write(`data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`)
     res.end()
   }
+}
+
+// ── 每日训练：AI 出题 ──
+
+export async function train(req: Request, res: Response): Promise<void> {
+  const { question } = req.body
+
+  if (!question || typeof question !== 'string') {
+    res.status(400).json({ message: '请输入出题需求' })
+    return
+  }
+
+  console.log(`[train] 收到出题需求，长度: ${question.length} 字`)
+
+  try {
+    // 1. 检索相关片段
+    const retrieved = await retrieve(question, 10)
+    if (retrieved.length === 0) {
+      res.json({ questions: [], docs: [], message: '当前文档库中没有相关内容' })
+      return
+    }
+
+    // 2. 去重文档来源
+    const docMap = new Map<number, string>()
+    for (const r of retrieved) {
+      if (!docMap.has(r.documentId)) docMap.set(r.documentId, r.documentTitle)
+    }
+    const docs = Array.from(docMap.entries()).map(([id, title]) => ({ id, title }))
+
+    // 3. 组装 chunks 发给 LLM 出题
+    const chunks = retrieved.map(r => ({ title: r.documentTitle, content: r.content, score: r.score }))
+    const answer = await askDocumentForTraining(question, chunks)
+
+    // 4. 解析 JSON
+    console.log('[train] LLM 返回长度:', answer.length, '字，结尾30字:', answer.slice(-30))
+    const questions = parseQuestions(answer)
+    console.log(`[train] 生成 ${questions.length} 道题目`)
+
+    res.json({ questions, docs })
+  } catch (err) {
+    console.error('[train] 出题失败:', err)
+    res.status(500).json({ message: `出题失败: ${(err as Error).message}` })
+  }
+}
+
+/**
+ * 从 LLM 返回的文本中提取 JSON 题目数组
+ * 适配各种可能的输出格式
+ */
+function parseQuestions(raw: string): Array<{ q: string; a: string }> {
+  try {
+    // 尝试直接解析
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return parsed
+    if (parsed.questions) return parsed.questions
+    return []
+  } catch {
+    // 尝试从文本中提取 JSON 数组
+    const match = raw.match(/\[\s*\{[\s\S]*\}\s*\]/)
+    if (match) {
+      try { return JSON.parse(match[0]) } catch { /* fall through */ }
+    }
+  }
+  console.warn('[train] 无法解析 LLM 返回的题目 JSON')
+  return []
 }

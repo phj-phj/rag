@@ -33,6 +33,11 @@ const router = createRouter({
       meta: { guest: true },
     },
     {
+      path: '/training',
+      name: 'DailyTraining',
+      component: () => import('../views/DailyTraining.vue'),
+    },
+    {
       path: '/docs/:id',
       name: 'DocViewer',
       component: () => import('../views/DocViewer.vue'),

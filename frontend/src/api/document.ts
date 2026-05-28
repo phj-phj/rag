@@ -10,9 +10,17 @@ export function getById(id: number) {
   return client.get(`/documents/${id}`)
 }
 
-export function create(formData: FormData) {
+export function create(
+  formData: FormData,
+  onProgress?: (_: number) => void
+) {
   return client.post('/documents', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e) => {
+      if (e.total && onProgress) {
+        onProgress(Math.round((e.loaded * 100) / e.total))
+      }
+    },
   })
 }
 

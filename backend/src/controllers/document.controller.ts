@@ -121,13 +121,11 @@ export async function create(req: Request, res: Response): Promise<void> {
     }
   }
 
-  const createdDocs = []
+  const createdDocs: Array<Record<string, unknown>> = []
 
   for (const file of files) {
     const originalname = decodeFilename(file.originalname)
-    const title = files.length === 1
-      ? (req.body.title || originalname)
-      : `${req.body.title || '批量上传'} - ${originalname}`
+    const title = req.body.title || originalname
 
     const doc = await Document.create({
       title,
@@ -152,12 +150,14 @@ export async function create(req: Request, res: Response): Promise<void> {
     } as any)
 
     createdDocs.push(docToJson(reloaded!))
-
-    // ── RAG: 语义切块 ──
-    chunkDocument(doc.id, doc.file_path, doc.file_type)
   }
 
   res.status(201).json(createdDocs)
+
+  // 响应返回后再异步切块，不阻塞上传
+  for (const doc of createdDocs) {
+    chunkDocument(doc.id as number, doc.file_path as string, doc.file_type as string)
+  }
 }
 
 // ── RAG: 文档上传后异步切块 ──
@@ -278,6 +278,7 @@ export async function getChunks(req: Request, res: Response): Promise<void> {
     return
   }
 
+  
   const chunks = await DocumentChunk.findAll({
     where: { document_id: doc.id },
     order: [['chunk_index', 'ASC']],

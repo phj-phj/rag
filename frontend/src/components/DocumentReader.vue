@@ -269,11 +269,9 @@ const pdfLoading = ref(false)
 const pdfError = ref('')
 let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null
 
-const BASE = 'http://localhost:3000'
-
 const fileDownloadUrl = computed(() => {
   if (!doc.value?.file_url) return ''
-  return `${BASE}${doc.value.file_url}`
+  return doc.value.file_url
 })
 
 const IMAGE_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif'])

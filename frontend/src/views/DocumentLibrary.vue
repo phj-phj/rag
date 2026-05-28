@@ -32,7 +32,7 @@
           </router-link>
         </li>
         <li><a href="#">共享给我</a></li>
-        <li><a href="#">每日训练</a></li>
+        <li><router-link to="/training">每日训练</router-link></li>
       </ul>
       <div class="topbar-right">
         <div class="search-box">
@@ -165,11 +165,11 @@
             class="mobile-nav-link"
             @click="mobileMenuOpen = false"
           >共享给我</a>
-          <a
-            href="#"
+          <router-link
+            to="/training"
             class="mobile-nav-link"
             @click="mobileMenuOpen = false"
-          >每日训练</a>
+          >每日训练</router-link>
           <button
             v-if="!authStore.isAuthenticated"
             class="mobile-nav-link"

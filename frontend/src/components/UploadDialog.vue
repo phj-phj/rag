@@ -97,6 +97,23 @@
           </div>
         </div>
 
+        <!-- Progress Bar -->
+        <div
+          v-if="uploading"
+          class="mt-4"
+        >
+          <div class="flex items-center justify-between text-sm text-gray-500 mb-1">
+            <span>上传中...</span>
+            <span>{{ progress }}%</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2">
+            <div
+              class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              :style="{ width: progress + '%' }"
+            />
+          </div>
+        </div>
+
         <!-- Error -->
         <p
           v-if="error"
@@ -145,6 +162,7 @@ const categories = ref<OptionItem[]>([])
 const allTags = ref<OptionItem[]>([])
 const dragging = ref(false)
 const uploading = ref(false)
+const progress = ref(0)
 const error = ref('')
 
 function triggerFileInput() {
@@ -192,6 +210,7 @@ function removeFile(idx: number) {
 async function handleUpload() {
   if (files.value.length === 0) return
   uploading.value = true
+  progress.value = 0
   error.value = ''
 
   const formData = new FormData()
@@ -204,12 +223,12 @@ async function handleUpload() {
 
   try {
     const { create } = await import('../api/document')
-    await create(formData)
+    await create(formData, (p) => { progress.value = p })
     files.value = []
     title.value = ''
     categoryId.value = null
     selectedTags.value = []
-    // Refresh parent
+    progress.value = 0
     window.location.reload()
   } catch (err: unknown) {
     error.value = (err as { response?: { data?: { message?: string } } }).response?.data?.message || '上传失败'
