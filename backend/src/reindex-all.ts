@@ -11,7 +11,7 @@ async function reindex(): Promise<void> {
     process.exit(0)
   }
 
-  const BATCH = 10
+  const BATCH = 50
   for (let i = 0; i < chunks.length; i += BATCH) {
     const batch = chunks.slice(i, i + BATCH)
     const embeddings = await embedTexts(batch.map(c => c.content))

@@ -2,7 +2,7 @@ import { Document, DocumentChunk } from './models'
 import { getDocumentTextForChunking } from './services/extraction.service'
 import { splitIntoChunks } from './services/chunking.service'
 import { embedTexts } from './services/embedding.service'
-import { indexChunks } from './services/retrieval.service'
+import { indexChunks, ensureIndexes } from './services/retrieval.service'
 import path from 'path'
 import fs from 'fs'
 
@@ -48,7 +48,7 @@ async function rebuild(): Promise<void> {
     )
 
     // 向量化 + 索引
-    const BATCH = 10
+    const BATCH = 50
     for (let i = 0; i < rows.length; i += BATCH) {
       const batch = rows.slice(i, i + BATCH)
       const embeddings = await embedTexts(batch.map(r => r.content))
@@ -59,6 +59,10 @@ async function rebuild(): Promise<void> {
 
     console.log(`[rebuild] DONE doc ${doc.id} (${doc.title.slice(0, 30)}): ${rows.length} chunks`)
   }
+
+  // 3. 全部重建完成后创建索引
+  console.log('[rebuild] 正在创建 LanceDB 索引...')
+  await ensureIndexes()
 
   console.log('[rebuild] 全部完成')
   process.exit(0)

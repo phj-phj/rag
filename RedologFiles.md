@@ -345,3 +345,45 @@
 - 编写 `rag-implementation.md`：5 步详细实现计划（切块 → 向量化 → LanceDB 检索 → 改造聊天接口 → 可选优化）
 - 参考 [llm-stacks.com](https://llm-stacks.com/docs/intro) RAG 学习指南，适配为 Node.js 技术栈
 - 决定不上全栈框架（LangChain/LlamaIndex），原因：单一 LLM 提供商无需抽象层，纯函数链路更易维护
+
+## 2026-05-28
+
+### RAG 全链路实现
+
+- **语义分块**（`chunking.service.ts`）：句子 → embedding → 相似度断点，最大 250 字/块，SiliconFlow BAAI/bge-large-zh-v1.5（1024维）
+- **向量存储**（LanceDB）：嵌入式向量数据库，余弦距离检索，`backend/lancedb_data/`
+- **检索服务**（`retrieval.service.ts`）：问题向量化 → LanceDB 搜索 Top-K → 补充文档标题
+- **聊天改造**：`chat.controller.ts` 从单文档查全文改为 `retrieve()` 检索全部文档片段，`chat.service.ts` prompt 接收多 chunk
+- **前端适配**：`ChatMessage.docs` 数组替代单 `docId`/`docTitle`，多来源按钮
+
+### AI 助手流式输出
+
+- **后端 SSE**（`chat.service.ts` `askDocumentStream()`）：`stream: true` → 异步生成器逐 token 推送
+- **前端流式消费**（`ChatView.vue`）：`fetch` + `ReadableStream`，第一个 token 到达时创建消息气泡，逐字追加渲染
+- 异常处理：连接失败/读取中断/无 token 均有可见错误提示
+- 加载体验：提问后仅显示动画，AI 开始输出才出现消息气泡（不再预占"思考中"占位）
+
+### 响应式导航栏统一
+
+- `RecentDocs.vue`：汉堡菜单移到 logo 右侧，补齐"AI 助手"导航项，移动端覆盖层统一
+- `ChatView.vue`：补全导航栏（文档库/AI助手/最近/集合/共享给我/每日训练），新增汉堡菜单和移动端覆盖层
+- 三个页（DocumentLibrary / RecentDocs / ChatView）响应式断点统一为 `900px`
+
+### 上线前优化
+
+- **CORS 白名单**（`app.ts`）：`cors({ origin, credentials })`，不再允许任意域
+- **前端 API 地址**（`client.ts`）：`VITE_API_BASE_URL` 环境变量，不再硬编码 localhost
+- **日志隐私**：`chat.controller.ts`、`retrieval.service.ts`、`chunking.service.ts` 中去掉用户提问文本和 chunk 内容
+- **`.env.example`**：配置模板，真实密钥不暴露
+- **`.gitignore`**：补 `lancedb_data/`、`backend/uploads/`、`backend/dist/`
+
+### 生产环境部署
+
+- **服务器**：阿里云 ECS 2核2G Ubuntu 22.04，IP: `47.95.112.34`
+- **架构**：Nginx（前端静态 + API 代理 + SSE 流式关闭缓冲）→ pm2（papier-api）→ Node.js + Express → MySQL + LanceDB
+- **部署配置**：
+  - `deploy/nginx.conf`：前端 `/root/frontend/dist/`、API 代理 `localhost:3000`、SSE `proxy_buffering off`、50M 上传限制
+  - `deploy/ecosystem.config.js`：pm2 进程管理（500M 内存限制、自动重启、日志路径）
+  - `deploy/setup.sh`：一键部署脚本
+  - `deploy/DEPLOY.md`：详细部署计划书
+- **验证通过**：登录、上传、文档浏览、AI 流式问答均正常

@@ -11,6 +11,7 @@ import adminRoutes from './routes/admin.routes'
 import categoryRoutes from './routes/category.routes'
 import tagRoutes from './routes/tag.routes'
 import chatRoutes from './routes/chat.routes'
+import { compactTable } from './services/retrieval.service'
 
 dotenv.config()
 
@@ -47,6 +48,8 @@ sequelize.authenticate()
   })
   .then(() => {
     console.log('数据库表同步完成')
+    // 启动时清理 LanceDB 旧版本
+    compactTable().catch(e => console.warn('LanceDB compact 跳过:', (e as Error).message))
     app.listen(PORT, () => {
       console.log(`服务器运行在 http://localhost:${PORT}`)
     })
