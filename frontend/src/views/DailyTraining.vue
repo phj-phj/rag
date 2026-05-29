@@ -124,7 +124,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { marked } from 'marked'
-import client from '../api/client'
+import { trainStream } from '../api/chat'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -138,6 +138,16 @@ const questions = ref<Array<{ q: string; a: string }>>([])
 const expanded = ref(new Set<number>())
 const showLogout = ref(false)
 const showMobileNav = ref(false)
+
+// 调试信息
+const showDebug = ref(false)
+const debugRetrievalMs = ref(0)
+const debugTtfbMs = ref(0)
+const debugLlmMs = ref(0)
+const debugModel = ref('')
+const debugMaxTokens = ref(0)
+const debugChunks = ref<Array<{ title: string; score: number; preview: string }>>([])
+const questionElapsed = ref<number[]>([])
 
 const answeredCount = computed(() => expanded.value.size)
 
@@ -165,20 +175,49 @@ async function generate() {
   error.value = ''
   questions.value = []
   expanded.value = new Set()
-
+  questionElapsed.value = []
   try {
-    console.log('[train] 发送请求:', q)
-    const { data } = await client.post('/chat/train', { question: q })
-    console.log('[train] 响应:', JSON.stringify(data).slice(0, 200))
-    if (data.questions && data.questions.length > 0) {
-      questions.value = data.questions
-    } else {
-      error.value = data.message || '未能生成题目，请尝试换一个话题'
+    console.log('[train-stream] 开始请求:', q)
+    const body = await trainStream(q)
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const json = line.slice(6).trim()
+        try {
+          const data = JSON.parse(json)
+          if (data.type === 'diagnostics') {
+            if (data.phase === 'retrieval') {
+              console.log('[train] 🔍 检索:', data.retrievalMs + 'ms, 模型:', data.model, 'maxTokens:', data.maxTokens, 'chunks:', data.chunkCount)
+            } else if (data.phase === 'llm') {
+              console.log('[train] 🤖 LLM: TTFB=' + data.ttfbMs + 'ms 总=' + data.llmMs + 'ms chunks=' + data.totalChunks)
+            }
+          } else if (data.type === 'question') {
+            questions.value.push(data.question)
+            if (data.elapsedMs) console.log('[train] 📝 题目' + (questions.value.length) + ' (' + data.elapsedMs + 'ms):', data.question.q.slice(0, 50))
+            loading.value = false
+          } else if (data.type === 'done') {
+            console.log('[train] ✅ 完成:', data.total, '道题')
+          } else if (data.type === 'error') {
+            error.value = data.message
+          }
+        } catch { /* skip */ }
+      }
     }
   } catch (e: unknown) {
-    console.error('[train] 错误:', e)
-    const err = e as { response?: { data?: { message?: string } }; message?: string }
-    error.value = err?.response?.data?.message || err?.message || '出题失败，请稍后重试'
+    console.error('[train-stream] 错误:', e)
+    const err = e as { message?: string }
+    error.value = err?.message || '出题失败，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -269,6 +308,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
 .error-box { padding: 14px 20px; background: #fef2f2; color: #dc2626; border-radius: 10px; font-size: 0.88rem; margin-bottom: 24px; }
 
 /* Score Bar */
+
 .score-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--amber-light); border-radius: 12px; margin-bottom: 24px; font-size: 0.88rem; color: var(--amber-deep); font-weight: 600; }
 
 /* Questions */

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { askDocument, askDocumentStream, askDocumentForTraining } from '../services/chat.service'
+import { askDocument, askDocumentStream, askDocumentForTraining, startTrainingStream } from '../services/chat.service'
 import { retrieve } from '../services/retrieval.service'
 
 export async function ask(req: Request, res: Response): Promise<void> {
@@ -165,6 +165,88 @@ export async function train(req: Request, res: Response): Promise<void> {
  * 从 LLM 返回的文本中提取 JSON 题目数组
  * 适配各种可能的输出格式
  */
+// ── 每日训练：流式出题 SSE ──
+
+export async function trainStream(req: Request, res: Response): Promise<void> {
+  const { question } = req.body
+
+  if (!question || typeof question !== 'string') {
+    res.status(400).json({ message: '请输入出题需求' })
+    return
+  }
+
+  const reqStart = Date.now()
+  console.log(`[train-stream] 收到出题需求，长度: ${question.length} 字`)
+
+  // 检索
+  const retrievalStart = Date.now()
+  let retrieved
+  try {
+    retrieved = await retrieve(question, 10)
+  } catch (err) {
+    res.status(500).json({ message: `检索失败: ${(err as Error).message}` })
+    return
+  }
+  const retrievalMs = Date.now() - retrievalStart
+
+  if (retrieved.length === 0) {
+    res.json({ questions: [], docs: [], message: '当前文档库中没有相关内容' })
+    return
+  }
+
+  const docMap = new Map<number, string>()
+  for (const r of retrieved) {
+    if (!docMap.has(r.documentId)) docMap.set(r.documentId, r.documentTitle)
+  }
+  const docs = Array.from(docMap.entries()).map(([id, title]) => ({ id, title }))
+  const chunks = retrieved.map(r => ({ title: r.documentTitle, content: r.content, score: r.score }))
+
+  // SSE 头
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+
+  try {
+    const { diagnostics, stream } = await startTrainingStream(question, chunks)
+
+    // 先发 docs + 检索阶段 diagnostics
+    res.write(`data: ${JSON.stringify({ type: 'docs', docs })}\n\n`)
+    res.write(`data: ${JSON.stringify({
+      type: 'diagnostics',
+      phase: 'retrieval',
+      retrievalMs,
+      ...diagnostics,
+    })}\n\n`)
+
+    let total = 0
+    for await (const event of stream) {
+      if (event.type === 'question') {
+        total++
+        const elapsedMs = Date.now() - reqStart
+        console.log(`[train-stream] 题目${total} (${elapsedMs}ms):`, JSON.stringify(event.question).slice(0, 80))
+        res.write(`data: ${JSON.stringify({ type: 'question', question: event.question, index: total - 1, elapsedMs })}\n\n`)
+      } else if (event.type === 'llmDone') {
+        res.write(`data: ${JSON.stringify({
+          type: 'diagnostics',
+          phase: 'llm',
+          ttfbMs: event.ttfbMs,
+          llmMs: event.llmMs,
+          totalChunks: event.totalChunks,
+        })}\n\n`)
+      }
+    }
+
+    console.log(`[train-stream] 生成 ${total} 道题目`)
+    res.write(`data: ${JSON.stringify({ type: 'done', total })}\n\n`)
+    res.end()
+  } catch (err) {
+    console.error('[train-stream] 流式生成失败:', err)
+    res.write(`data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`)
+    res.end()
+  }
+}
+
 function parseQuestions(raw: string): Array<{ q: string; a: string }> {
   try {
     // 尝试直接解析

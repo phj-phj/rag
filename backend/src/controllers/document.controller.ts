@@ -7,7 +7,7 @@ import { deleteFile, getFileUrl } from '../services/file.service'
 import { extractDocxText, extractDocxImages, extractDocxHtml, extractPdfText, extractPdfHtml, cleanText, getDocumentTextForChunking } from '../services/extraction.service'
 import { splitIntoChunks } from '../services/chunking.service'
 import { embedTexts } from '../services/embedding.service'
-import { indexChunks, deleteDocumentChunks } from '../services/retrieval.service'
+import { indexChunks, deleteDocumentChunks, ensureIndexes } from '../services/retrieval.service'
 
 function docToJson(doc: Document): Record<string, unknown> {
   const d = (doc.toJSON() as unknown) as Record<string, unknown>
@@ -201,6 +201,11 @@ async function chunkDocument(docId: number, filePath: string, fileType: string):
     )
 
     console.log(`[RAG] 文档 ${docId} 向量化+索引完成：${embeddings.length} 个向量`)
+
+    // 确保向量索引存在（首次创建后自动跳过）
+    await ensureIndexes().catch(e =>
+      console.warn('[RAG] 索引创建跳过:', (e as Error).message)
+    )
   } catch (err) {
     console.error(`[RAG] 文档 ${docId} 切块失败:`, (err as Error).message)
   }
