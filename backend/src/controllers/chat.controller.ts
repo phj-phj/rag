@@ -1,6 +1,9 @@
 import { Request, Response } from 'express'
 import { askDocument, askDocumentStream, askDocumentForTraining, startTrainingStream } from '../services/chat.service'
 import { retrieve } from '../services/retrieval.service'
+import { rewriteQuery } from '../services/rewrite.service'
+import { routeQuery } from '../services/router.service'
+import { debugPhase, debugInfo, debugRetrieval, debugConfidence, debugLLM, debugTiming, debugRoute } from '../utils/debug'
 
 export async function ask(req: Request, res: Response): Promise<void> {
   const { question } = req.body
@@ -10,32 +13,70 @@ export async function ask(req: Request, res: Response): Promise<void> {
     return
   }
 
-  try {
-    const retrieved = await retrieve(question, 5)
-    console.log(`[chat] 检索完成，命中 ${retrieved.length} 个片段`)
+  debugPhase('收到问题 (非流式)')
+  debugInfo('原始问题', question)
 
-    if (retrieved.length === 0) {
+  // 路由判定
+  const route = routeQuery(question)
+  debugRoute(route.verdict, route.score, route.reason)
+
+  try {
+    // Query 泛化 + 检索（快速/深度共用）
+    const rewritten = await rewriteQuery(question)
+    debugInfo('改写结果', rewritten || '(空)')
+    const retrievalQuery = question + ' ' + rewritten
+
+    const retrievalStart = Date.now()
+    const retrieved = await retrieve(retrievalQuery, 5)
+    debugInfo('检索耗时', `${Date.now() - retrievalStart}ms`)
+
+    // 过滤低分 chunk
+    const MIN_SCORE = 0.1
+    const filtered = retrieved.filter(r => r.score >= MIN_SCORE)
+    debugRetrieval(
+      retrieved.map(r => ({ title: r.documentTitle, score: r.score, content: r.content })),
+      retrieved.length - filtered.length,
+    )
+
+    if (filtered.length === 0) {
+      debugInfo('结果', '无相关片段')
+      debugTiming()
       res.json({
-        answer: '当前文档库中没有相关内容。请先上传一些文档，我就能帮你查找答案了。',
+        answer: '当前文档库中未找到相关信息。请尝试更换关键词或上传相关文档。',
         model: 'retrieval',
         docs: [],
       })
       return
     }
 
-    const chunks = retrieved.map(r => ({
+    const avgScore = filtered.reduce((s, r) => s + r.score, 0) / filtered.length
+    debugConfidence(avgScore, avgScore >= 0.3 ? 'high' : avgScore >= 0.15 ? 'medium' : 'low')
+
+    const topDoc = filtered[0]
+    const docs = topDoc ? [{ id: topDoc.documentId, title: topDoc.documentTitle }] : []
+
+    // ── 快速通道：直接拼接检索结果 ──
+    if (route.verdict === 'fast') {
+      const answer = filtered.slice(0, 3).map(c =>
+        `【${c.documentTitle}】\n${c.content}`
+      ).join('\n\n---\n\n')
+      debugInfo('快速通道', `直接返回${filtered.slice(0, 3).length}条片段`)
+      debugTiming()
+      res.json({ answer, model: 'retrieval-direct', docs })
+      return
+    }
+
+    // ── 深度通道：LLM 生成 ──
+    const chunks = filtered.map(r => ({
       title: r.documentTitle,
       content: r.content,
       score: r.score,
     }))
 
+    const llmStart = Date.now()
     const result = await askDocument(question, chunks)
-
-    const docMap = new Map<number, string>()
-    for (const r of retrieved) {
-      if (!docMap.has(r.documentId)) docMap.set(r.documentId, r.documentTitle)
-    }
-    const docs = Array.from(docMap.entries()).map(([id, title]) => ({ id, title }))
+    debugLLM(0, Date.now() - llmStart, 0)
+    debugTiming()
 
     res.json({ answer: result.answer, model: result.model, docs })
   } catch (err) {
@@ -54,68 +95,119 @@ export async function askStream(req: Request, res: Response): Promise<void> {
     return
   }
 
-  console.log(`[chat-stream] 收到问题，长度: ${question.length} 字`)
+  debugPhase('收到问题 (流式)')
+  debugInfo('原始问题', question)
 
-  // 先检索
+  // 路由判定
+  const route = routeQuery(question)
+  debugRoute(route.verdict, route.score, route.reason)
+
+  // Query 泛化
+  const rewritten = await rewriteQuery(question)
+  debugInfo('改写结果', rewritten || '(空)')
+  const retrievalQuery = question + ' ' + rewritten
+
+  // 检索
+  const retrievalStart = Date.now()
   let retrieved
   try {
-    retrieved = await retrieve(question, 5)
-    console.log(`[chat-stream] 检索命中: ${retrieved.length} 个片段`)
+    retrieved = await retrieve(retrievalQuery, 5)
+    debugInfo('检索耗时', `${Date.now() - retrievalStart}ms`)
+
+    // 过滤低分 chunk
+    const MIN_SCORE = 0.1
+    const filtered = retrieved.filter((r: any) => r.score >= MIN_SCORE)
+    debugRetrieval(
+      retrieved.map((r: any) => ({ title: r.documentTitle, score: r.score, content: r.content })),
+      retrieved.length - filtered.length,
+    )
+
+    if (filtered.length === 0) {
+      debugInfo('结果', '无相关片段，不调用LLM')
+      debugTiming()
+      res.json({
+        answer: '当前文档库中未找到相关信息。请尝试更换关键词或上传相关文档。',
+        model: 'retrieval',
+        docs: [],
+      })
+      return
+    }
+
+    const avgScore = filtered.reduce((s: number, r: any) => s + r.score, 0) / filtered.length
+    debugConfidence(avgScore, avgScore >= 0.3 ? 'high' : avgScore >= 0.15 ? 'medium' : 'low')
+
+    const chunks = filtered.map((r: any) => ({
+      title: r.documentTitle,
+      content: r.content,
+      score: r.score,
+    }))
+
+    // 只展示相似度最高的文档
+    const topDoc = filtered[0]
+    const docs = topDoc ? [{ id: topDoc.documentId, title: topDoc.documentTitle }] : []
+
+    // ── 快速通道流式 ──
+    if (route.verdict === 'fast') {
+      debugInfo('快速通道(流式)', `直接返回${filtered.slice(0, 3).length}条片段`)
+      debugTiming()
+
+      res.setHeader('Content-Type', 'text/event-stream')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.setHeader('Connection', 'keep-alive')
+      res.flushHeaders()
+
+      res.write(`data: ${JSON.stringify({ type: 'docs', docs })}\n\n`)
+
+      const answer = filtered.slice(0, 3).map(c =>
+        `【${c.documentTitle}】\n${c.content}`
+      ).join('\n\n')
+
+      const tokens = answer.split('')
+      for (let i = 0; i < tokens.length; i += 3) {
+        res.write(`data: ${JSON.stringify({ type: 'token', content: tokens.slice(i, i + 3).join('') })}\n\n`)
+      }
+      res.write('data: [DONE]\n\n')
+      res.end()
+      return
+    }
+
+    // ── 深度通道：LLM 流式生成 ──
+    // SSE 头
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders()
+
+    try {
+      const stream = askDocumentStream(question, chunks)
+
+      // 先发 docs
+      res.write(`data: ${JSON.stringify({ type: 'docs', docs })}\n\n`)
+
+      let tokenCount = 0
+      const llmStart = Date.now()
+      for await (const token of stream) {
+        tokenCount++
+        res.write(`data: ${JSON.stringify({ type: 'token', content: token })}\n\n`)
+      }
+
+      const llmMs = Date.now() - llmStart
+      debugLLM(0, llmMs, tokenCount)
+      debugTiming()
+
+      res.write('data: [DONE]\n\n')
+      res.end()
+    } catch (err) {
+      console.error('[chat-stream] 流式生成失败:', err)
+      res.write(`data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`)
+      res.end()
+    }
   } catch (err) {
     console.error('[chat-stream] 检索失败:', err)
     res.status(500).json({ message: `检索失败: ${(err as Error).message}` })
     return
   }
 
-  if (retrieved.length === 0) {
-    res.json({
-      answer: '当前文档库中没有相关内容。请先上传一些文档，我就能帮你查找答案了。',
-      model: 'retrieval',
-      docs: [],
-    })
-    return
-  }
-
-  const chunks = retrieved.map(r => ({
-    title: r.documentTitle,
-    content: r.content,
-    score: r.score,
-  }))
-
-  // 去重文档来源
-  const docMap = new Map<number, string>()
-  for (const r of retrieved) {
-    if (!docMap.has(r.documentId)) docMap.set(r.documentId, r.documentTitle)
-  }
-  const docs = Array.from(docMap.entries()).map(([id, title]) => ({ id, title }))
-
-  // SSE 头
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders()
-
-  try {
-    console.log('[chat-stream] 开始调用 LLM...')
-    const stream = askDocumentStream(question, chunks)
-
-    // 先发 docs
-    res.write(`data: ${JSON.stringify({ type: 'docs', docs })}\n\n`)
-
-    let tokenCount = 0
-    for await (const token of stream) {
-      tokenCount++
-      res.write(`data: ${JSON.stringify({ type: 'token', content: token })}\n\n`)
-    }
-
-    console.log(`[chat-stream] LLM 生成完成, 共 ${tokenCount} 个 token`)
-    res.write('data: [DONE]\n\n')
-    res.end()
-  } catch (err) {
-    console.error('[chat-stream] 流式生成失败:', err)
-    res.write(`data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`)
-    res.end()
-  }
 }
 
 // ── 每日训练：AI 出题 ──

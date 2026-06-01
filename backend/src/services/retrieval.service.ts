@@ -1,7 +1,9 @@
 import * as lancedb from '@lancedb/lancedb'
 import path from 'path'
 import { embedQuery } from './embedding.service'
+import { rerank } from './rerank.service'
 import Document from '../models/Document'
+import { debugInfo } from '../utils/debug'
 
 const DB_PATH = path.resolve(__dirname, '../../lancedb_data')
 
@@ -36,27 +38,9 @@ export async function ensureIndexes(): Promise<void> {
     return
   }
 
-  // 向量索引：IVF_PQ，1024 维 → 128 个子向量（8 dims/sub）
-  // num_partitions ≈ sqrt(rowCount)，但至少 32
-  const numPartitions = Math.max(32, Math.floor(Math.sqrt(rowCount)))
-  try {
-    await table.createIndex('vector', {
-      config: lancedb.Index.ivfPq({
-        numPartitions: numPartitions,
-        numSubVectors: 128,
-        maxIterations: 50,
-      }),
-    })
-    console.log(`[retrieval] IVF_PQ 向量索引已创建 (partitions=${numPartitions}, sub_vectors=128)`)
-  } catch (e: any) {
-    if (e.message?.includes('already exists')) {
-      console.log('[retrieval] 向量索引已存在，跳过')
-    } else {
-      throw e
-    }
-  }
+  // 小规模库（<1000 vectors）使用精确检索，无需向量索引
 
-  // 标量索引：加速 document_id 过滤
+  // BTREE 标量索引：加速 document_id 过滤
   try {
     await table.createIndex('document_id', {
       config: lancedb.Index.btree(),
@@ -65,6 +49,20 @@ export async function ensureIndexes(): Promise<void> {
   } catch (e: any) {
     if (e.message?.includes('already exists')) {
       console.log('[retrieval] 标量索引已存在，跳过')
+    } else {
+      throw e
+    }
+  }
+
+  // 全文索引：BM25 关键词检索
+  try {
+    await table.createIndex('content', {
+      config: lancedb.Index.fts(),
+    })
+    console.log('[retrieval] FTS 全文索引已创建 (content)')
+  } catch (e: any) {
+    if (e.message?.includes('already exists')) {
+      console.log('[retrieval] FTS 索引已存在，跳过')
     } else {
       throw e
     }
@@ -133,37 +131,162 @@ export async function retrieve(question: string, topK: number = 5): Promise<Retr
   }
 
   const table = await conn.openTable('chunks')
-  const queryVec = await embedQuery(question)
+  const CANDIDATE_FACTOR = 4
+  const searchStart = Date.now()
 
-  const results = await (table.search(queryVec) as any)
-    .distanceType('cosine')
-    .nprobes(20)
-    .refineFactor(5)
-    .limit(topK)
-    .toArray()
+  // ── 双路并行检索 ──
+  const queryVec = await embedQuery(question)
+  debugInfo('向量维度', queryVec.length)
+
+  const [vecResults, ftsResults] = await Promise.all([
+    // 向量检索
+    (table.search(queryVec) as any).distanceType('cosine').limit(topK * CANDIDATE_FACTOR).toArray(),
+    // 全文检索（BM25）
+    (table.search(question, 'fts' as any, 'content' as any) as any).limit(topK * CANDIDATE_FACTOR).toArray().catch((err: any) => {
+      console.warn('[retrieval] FTS 检索失败，仅用向量:', err.message)
+      return []
+    }),
+  ])
+  debugInfo('双路检索耗时', `${Date.now() - searchStart}ms`)
+  debugInfo('向量命中', vecResults.length)
+  debugInfo('FTS命中', ftsResults.length)
 
   // 补充文档标题
-  const docIds = [...new Set(results.map((r: any) => r.document_id))]
+  const allResults = [...vecResults, ...ftsResults]
+  const docIds = [...new Set(allResults.map((r: any) => r.document_id))]
   const docs = await Document.findAll({
     where: { id: docIds as number[] },
     attributes: ['id', 'title'],
   })
   const titleMap = new Map(docs.map(d => [d.id, d.title]))
 
-  const scored = results.map((r: any) => ({
+  // 将两路结果标准化为统一格式
+  const toChunk = (r: any, src: 'vector' | 'fts', idx: number): any => ({
     chunkId: r.id,
     documentId: r.document_id,
     documentTitle: titleMap.get(r.document_id) || '未知文档',
     content: r.content,
-    score: r._distance !== undefined ? Math.max(0, 1 - r._distance) : 0,
-  }))
+    score: src === 'vector'
+      ? Math.max(0, 1 - (r._distance ?? 0))
+      : 0.5,
+    _rank: idx + 1,
+  })
 
-  console.log(`[retrieval] 命中 ${scored.length} 个片段 (nprobes=20, refineFactor=5)`)
-  scored.forEach((c: RetrievedChunk, i: number) => {
+  const vecChunks = vecResults.map((r: any, i: number) => toChunk(r, 'vector', i))
+  const ftsChunks = ftsResults.map((r: any, i: number) => toChunk(r, 'fts', i))
+
+  // FTS 结果日志
+  if (ftsChunks.length > 0) {
+    console.log(`[retrieval] FTS 命中:`)
+    ftsChunks.slice(0, 5).forEach((c: any, i: number) => {
+      console.log(`[retrieval]   ${i + 1}. [${c.documentTitle}] ${c.content.slice(0, 60).replace(/\n/g, ' ')}...`)
+    })
+  }
+
+  // ── RRF 融合（FTS 与向量同权）──
+  const merged = rrfMerge(vecChunks, ftsChunks, topK * CANDIDATE_FACTOR)
+  console.log(`[retrieval] 双路粗召 ${vecChunks.length}+${ftsChunks.length} → RRF融合 ${merged.length}`)
+
+  // ── Rerank 精排（粗召结果重新打分排序）──
+  const reranked = await rerank(question, merged, topK * 2)
+  console.log(`[retrieval] Rerank精排: ${merged.length}条 → ${reranked.length}条`)
+
+  // MMR 多样性选择
+  const selected = mmrSelect(reranked, topK, 0.7)
+  console.log(`[retrieval] MMR 精选结果:`)
+  selected.forEach((c: RetrievedChunk, i: number) => {
     console.log(`[retrieval]   ${i + 1}. [${c.documentTitle}] score=${c.score.toFixed(3)}`)
   })
 
-  return scored
+  return selected
+}
+
+// ── RRF 双路融合 ──
+
+/**
+ * Reciprocal Rank Fusion：合并向量和 FTS 两路结果
+ * RRF_score = Σ 1 / (k + rank_in_path)
+ */
+function rrfMerge(
+  vec: (RetrievedChunk & { _rank?: number })[],
+  fts: (RetrievedChunk & { _rank?: number })[],
+  topK: number,
+): RetrievedChunk[] {
+  const K = 60
+  const scoreMap = new Map<number, { chunk: RetrievedChunk; rrf: number }>()
+
+  for (const [pathResults, weight] of [[vec, 1], [fts, 1]] as const) {
+    for (const c of pathResults) {
+      const rank = c._rank ?? pathResults.length
+      const rrf = (weight as number) / (K + rank)
+      if (scoreMap.has(c.chunkId)) {
+        scoreMap.get(c.chunkId)!.rrf += rrf
+      } else {
+        scoreMap.set(c.chunkId, { chunk: c, rrf })
+      }
+    }
+  }
+
+  return Array.from(scoreMap.values())
+    .map(({ chunk, rrf }) => ({ ...chunk, score: Math.min(1, rrf * 10) })) // 缩放到 [0,1]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+}
+
+// ── MMR 多样性去重 ──
+
+function mmrSelect(candidates: RetrievedChunk[], topK: number, lambda: number): RetrievedChunk[] {
+  if (candidates.length <= topK) return candidates
+
+  const selected: RetrievedChunk[] = []
+  const remaining = [...candidates]
+
+  // 选最高分作为第一条
+  selected.push(remaining.shift()!)
+
+  while (selected.length < topK && remaining.length > 0) {
+    let bestIdx = 0
+    let bestScore = -Infinity
+
+    for (let i = 0; i < remaining.length; i++) {
+      const relevance = remaining[i].score
+      // 多样性：与已选中的最大文本重叠度
+      let maxOverlap = 0
+      for (const s of selected) {
+        // 优先惩罚同文档
+        if (remaining[i].documentId === s.documentId) {
+          maxOverlap = Math.max(maxOverlap, 0.5)
+        }
+        const overlap = jaccardOverlap(remaining[i].content, s.content)
+        maxOverlap = Math.max(maxOverlap, overlap)
+      }
+      const mmrScore = lambda * relevance - (1 - lambda) * maxOverlap
+      if (mmrScore > bestScore) {
+        bestScore = mmrScore
+        bestIdx = i
+      }
+    }
+
+    selected.push(remaining[bestIdx])
+    remaining.splice(bestIdx, 1)
+  }
+
+  // 按原始分数排序返回
+  return selected.sort((a, b) => b.score - a.score)
+}
+
+/**
+ * 字符级 Jaccard 重叠度（快速近似文本相似度）
+ */
+function jaccardOverlap(a: string, b: string): number {
+  const setA = new Set(a.slice(0, 200))
+  const setB = new Set(b.slice(0, 200))
+  let intersection = 0
+  for (const ch of setA) {
+    if (setB.has(ch)) intersection++
+  }
+  const union = setA.size + setB.size - intersection
+  return union === 0 ? 0 : intersection / union
 }
 
 // ── 删除 ──

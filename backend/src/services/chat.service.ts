@@ -6,7 +6,7 @@ import { ChatPromptTemplate } from '@langchain/core/prompts'
 const llm = new ChatOpenAI({
   model: process.env.MIMO_MODEL || 'mimo-v2.5-pro',
   temperature: 0.3,
-  maxTokens: 1024,
+  maxTokens: 2048,
   apiKey: process.env.MIMO_API_KEY || '',
   configuration: {
     baseURL: process.env.MIMO_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/v1',
@@ -44,9 +44,9 @@ interface ChunkInput {
 const SYSTEM_PROMPT = `你是 Papier 文档助手。根据以下参考资料回答用户问题。
 
 要求：
-1. 直接回答问题，不要提及"参考资料"、"片段X"、"文档X"等来源信息
+1. 像人一样自然回答，直接给出答案
 2. 回答简洁，控制在 3-5 句话以内
-3. 如果所有资料都不包含答案，请说"当前文档库中未找到相关信息"
+3. 如果提供的内容不包含答案，回答"当前文档库中未找到相关信息"
 
 参考资料：
 {chunks}`
@@ -63,7 +63,7 @@ export async function askDocument(
   chunks: ChunkInput[],
 ): Promise<ChatResult> {
   const chunksText = chunks.map((c, i) =>
-    `[参考资料${i + 1}：《${c.title}》]\n${c.content}`
+    `【${c.title}】\n${c.content}`
   ).join('\n\n---\n\n')
 
   const messages = await promptTemplate.formatMessages({
@@ -87,7 +87,7 @@ export async function* askDocumentStream(
   chunks: ChunkInput[],
 ): AsyncGenerator<string, string, unknown> {
   const chunksText = chunks.map((c, i) =>
-    `[参考资料${i + 1}：《${c.title}》]\n${c.content}`
+    `【${c.title}】\n${c.content}`
   ).join('\n\n---\n\n')
 
   const messages = await promptTemplate.formatMessages({
@@ -112,7 +112,7 @@ export async function askDocumentForTraining(
   chunks: ChunkInput[],
 ): Promise<string> {
   const chunksText = chunks.map((c, i) =>
-    `[参考资料${i + 1}：《${c.title}》]\n${c.content}`
+    `【${c.title}】\n${c.content}`
   ).join('\n\n---\n\n')
 
   const prompt = ChatPromptTemplate.fromMessages([
@@ -155,7 +155,7 @@ export async function startTrainingStream(
   stream: AsyncGenerator<TrainingStreamEvent, void, unknown>
 }> {
   const chunksText = chunks.map((c, i) =>
-    `[参考资料${i + 1}：《${c.title}》]\n${c.content}`
+    `【${c.title}】\n${c.content}`
   ).join('\n\n---\n\n')
 
   const diagnostics: TrainingDiagnostics = {

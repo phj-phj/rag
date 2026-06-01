@@ -35,10 +35,12 @@ export async function splitIntoChunks(
 
   // 尝试语义分块
   try {
-    return await semanticChunking(text, maxSize, minSize)
+    const chunks = await semanticChunking(text, maxSize, minSize)
+    return addOverlap(chunks)
   } catch (err) {
     console.log('[chunking] embedding 不可用，回退段落分块:', (err as Error).message)
-    return paragraphChunking(text, maxSize, minSize)
+    const chunks = paragraphChunking(text, maxSize, minSize)
+    return addOverlap(chunks)
   }
 }
 
@@ -149,22 +151,56 @@ function splitLongSentence(text: string, maxSize: number): string[] {
 
 // ── 共用工具 ──
 
+// 题号/列表项模式（强断点：不在句子中间切断）
+const ITEM_PATTERN = /^(?:\d+[.、）)]|[（(]\d+[)）]|[一二三四五六七八九十]+[、。)])/
+// 题库关键词
+const EXAM_KEYWORDS = /(?:题目|选项|答案|解析|正确|错误|判断|单选|多选|填空|问答|简答)/
+
 function splitSentences(text: string): SentenceMeta[] {
-  const paragraphs = text.split(/\n\n+/)
+  const paragraphs = text.split(/\n{2,}/)
   const sentences: SentenceMeta[] = []
   let currentHeading: string | null = null
 
+  // 检测是否为题库文档（≥3 个题号）
+  const itemCount = (text.match(/^(?:\d+[.、）)]|[（(]\d+[)）]|[一二三四五六七八九十]+[、。)])/gm) || []).length
+  const isExamBank = itemCount >= 3
+
   for (const para of paragraphs) {
-    if (!para.trim()) continue
-    const headingMatch = para.match(
+    const trimmed = para.trim()
+    if (!trimmed) continue
+
+    // 标题检测
+    const headingMatch = trimmed.match(
       /^(?:第[一二三四五六七八九十\d]+[章节]|[（(]?\d+[.)）]\s*|[一二三四五六七八九十]+[、。，])\s*\S{1,40}$/m
     )
-    if (headingMatch && para.length < 80) { currentHeading = para.trim(); continue }
-    const parts = para.split(/(?<=[。！？!?；;])/g)
+    if (headingMatch && trimmed.length < 80 && !isExamBank) {
+      currentHeading = trimmed
+      continue
+    }
+
+    // 题库模式：按题号强断
+    if (isExamBank && ITEM_PATTERN.test(trimmed)) {
+      // 题号行作为该 chunk 的 heading
+      const itemHeading = trimmed.match(/^\S{1,30}/)?.[0] || null
+      // 按换行拆题目内容
+      const lines = trimmed.split(/\n/)
+      let body = lines.slice(1).join('\n').trim()
+      if (!body) body = trimmed // 单行题
+      const parts = body.split(/(?<=[。！？!?；;])/g)
+      for (const part of parts) {
+        const t = part.trim()
+        if (!t || t.length < 2) continue
+        sentences.push({ text: t, heading: itemHeading })
+      }
+      continue
+    }
+
+    // 普通段落：按句号切
+    const parts = trimmed.split(/(?<=[。！？!?；;])/g)
     for (const part of parts) {
-      const trimmed = part.trim()
-      if (!trimmed || trimmed.length < 2) continue
-      sentences.push({ text: trimmed, heading: currentHeading })
+      const t = part.trim()
+      if (!t || t.length < 2) continue
+      sentences.push({ text: t, heading: currentHeading })
     }
   }
   return sentences
@@ -240,6 +276,31 @@ function makeChunk(sentences: SentenceMeta[], index: number, strategy: 'semantic
     index, content, tokenCount: estimateTokens(content),
     heading: sentences[0]?.heading || null, positionStart: 0, positionEnd: content.length, strategy
   }
+}
+
+/**
+ * 重叠窗口：每个 chunk 尾部 20% 拼入下一个 chunk 头部，保留上下文边界
+ */
+function addOverlap(chunks: ChunkResult[]): ChunkResult[] {
+  if (chunks.length <= 1) return chunks
+
+  const OVERLAP_RATIO = 0.2
+
+  for (let i = 1; i < chunks.length; i++) {
+    const prev = chunks[i - 1]
+    const overlapLen = Math.floor(prev.content.length * OVERLAP_RATIO)
+    if (overlapLen < 10) continue // 太短不重叠
+
+    const tail = prev.content.slice(-overlapLen)
+    chunks[i] = {
+      ...chunks[i],
+      content: tail + '\n' + chunks[i].content,
+      tokenCount: estimateTokens(tail + '\n' + chunks[i].content),
+    }
+  }
+
+  console.log(`[chunking] 重叠窗口: ${OVERLAP_RATIO * 100}%`)
+  return chunks
 }
 
 function estimateTokens(text: string): number {

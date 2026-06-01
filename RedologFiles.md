@@ -387,3 +387,84 @@
   - `deploy/setup.sh`：一键部署脚本
   - `deploy/DEPLOY.md`：详细部署计划书
 - **验证通过**：登录、上传、文档浏览、AI 流式问答均正常
+
+## 2026-06-01
+
+### AI 模块全面优化
+
+本次优化覆盖检索全链路，从 chunk 质量 → 检索精度 → 排序准确性 → 响应速度四层递进。
+
+### 调试体系搭建
+
+- **新建** `backend/src/utils/debug.ts`：统一调试工具，通过 `DEBUG_AI=true` 环境变量控制
+  - `debugPhase` / `debugInfo` — 阶段标记与关键信息
+  - `debugRetrieval` / `debugConfidence` / `debugLLM` / `debugTiming` — 检索结果、置信度、LLM 耗时、总耗时
+  - `debugRoute` — 快速/深度路由判定日志
+- **日志落盘**：`backend/logs/` 目录，保留最近 3 次运行（`ai-debug-{1,2,3}.log`），滚动覆盖
+- **接入点**：`retrieval.service.ts`（向量维度、搜索耗时）、`chat.controller.ts`（全阶段日志，ask + askStream）
+
+### 配置修复
+
+- **`.env` Embedding 变量名修复**：`SILICONFLOW_*` → `EMBED_*`（代码实际读取的变量名），否则 embedding 调用无 API Key
+- **MIMO Base URL 修正**：`xiaomimo.com` → `xiaomimimo.com`（少了一个 `mi`，导致 401）
+- **智谱更换**：SiliconFlow BGE-large-zh-v1.5（余额不足 403）→ 智谱 embedding-2（1024 维，免费额度，已有 Key）
+
+### P0 — 基础修复
+
+- **Prompt 去标签化**（`chat.service.ts`）：
+  - chunk 标注从 `[参考资料1：《标题》]` 改为 `【标题】`
+  - 移除"不要提及参考资料"禁令，改为"像人一样自然回答"
+  - maxTokens：1024 → 2048（MIMO pro 推理模型需要额外空间）
+- **低分 chunk 过滤**（`chat.controller.ts`）：score < 0.1 的 chunk 不送 LLM，空结果直接返回"未找到"
+- **精确检索**（`retrieval.service.ts`）：去掉 `.nprobes(20).refineFactor(5)`，100+ 文档用暴力搜索，修复 IVF_PQ 近似导致 score 全为 0.00x 的 bug
+- **LanceDB 启动修复**（`app.ts`）：`ensureIndexes()` → 延迟 500ms → `compactTable()` 顺序执行，避免并发事务冲突导致进程退出
+
+### P1 — 检索增强
+
+- **文档切片三改进**（`chunking.service.ts`）：
+  - NLP 句子边界：题号模式（`1.` / `(1)` / `一、` 等）作为强断点，不在句子中间切断
+  - 题库适配：检测到 ≥3 个题号时，强制按题号边界分段，不拆散 Q&A
+  - 重叠窗口 20%：chunk 尾部拼接至下个 chunk 头部，保留上下文边界
+- **MMR 多样性去重**（`retrieval.service.ts`）：粗召 20 条 → MMR 精选 5 条，同文档惩罚 + 文本 Jaccard 重叠度计算
+- **Query 泛化**（`rewrite.service.ts`）：axios 调用 MIMO v2.5 改写用户问题为检索关键词，拼接原问题做 embedding 检索
+- **混合检索**（`retrieval.service.ts`）：
+  - LanceDB FTS 全文索引（`ensureIndexes` 中创建）
+  - 向量 20 条 + FTS 检索并行 → RRF 融合（Reciprocal Rank Fusion）
+  - FTS 与向量同权（weight=1:1）
+
+### P2 — 用户体验
+
+- **Reranker 精排**（`rerank.service.ts`）：Qwen3-Reranker-0.6B（SiliconFlow），粗召 → RRF 融合 → Rerank 重打分 → MMR 精选
+  - 效果：HashMap 查询 top-1 从 `面经4.9.pdf (score=0.164)` 变为 `test-doc.txt (score=0.993)`，区分度从 1.3× 提升至 497×
+  - Reranker 配置独立（`RERANK_*` 环境变量），失败时退回粗排结果
+- **快速/深度双路由**（`router.service.ts` + `chat.controller.ts`）：
+  - 纯规则打分（不调 LLM）：简单词 -1 / 复杂词 +2 / 长度 / 问号数 / 术语密度
+  - 快速通道（≥2 分）：检索结果直接拼接返回，不调 LLM，< 4s
+  - 深度通道（< 2 分）：走完整 LLM 链路
+  - ask 和 askStream 双接口均已集成
+- **单文档展示**：AI 回答后只展示相似度最高的 1 篇文档来源
+- **置信度阈值校准**：匹配智谱 embedding-2 的分数区间（≥0.3 high / ≥0.15 medium / <0.15 low）
+
+### 检索链路验证
+
+完整链路（深度通道）：
+```
+收到问题 → 路由判定(2分=深度) → Query改写 → 双路检索(FTS+向量) 
+→ RRF融合 → Rerank精排 → MMR精选 → LLM生成 → 返回答案+top1文档
+耗时: ~10s (检索~1s + LLM~9s)
+```
+
+日志示例：
+```
+[ai-debug] ── 路由: 深度通道 🧠 (得分=2, 复杂词:机制+术语密集) ──
+[ai-debug]   双路检索耗时: 194ms
+[ai-debug]   向量命中: 20 | FTS命中: 4
+[ai-debug] ✓ [0.993] [test-doc.txt] Java HashMap 原理详解...
+[ai-debug] ✓ 命中置信度: high (平均分 0.907)
+```
+
+### 文档
+
+- 更新 `docs/ai-optimization.md`：P0-P3 完整优化清单
+- 更新 `SETUP.md`：本地开发环境搭建指南
+- 更新 `backend/.env.example`：Embedding 配置改为智谱变量名
