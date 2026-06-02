@@ -1,192 +1,181 @@
 <template>
   <div class="training-page">
-    <!-- Top Bar -->
-    <header class="topbar">
-      <router-link to="/" class="logo">Pap<em>ier</em></router-link>
-      <button class="hamburger" @click="showMobileNav = !showMobileNav">
-        <span /><span /><span />
-      </button>
-      <ul class="top-nav">
-        <li><router-link to="/">文档库</router-link></li>
-        <li><router-link to="/chat">AI 助手</router-link></li>
-        <li><router-link to="/recent">最近</router-link></li>
-        <li><router-link to="/training" class="active">每日训练</router-link></li>
-      </ul>
-      <div class="topbar-right">
-        <div v-if="authStore.user" class="avatar-wrapper" @click.stop="showLogout = !showLogout">
-          <div class="avatar">{{ authStore.user.username[0].toUpperCase() }}</div>
-          <Transition name="fade">
-            <div v-if="showLogout" class="avatar-dropdown">
-              <div class="dropdown-user">
-                <span class="dropdown-name">{{ authStore.user.username }}</span>
-                <span class="dropdown-role">{{ authStore.isAdmin ? '管理员' : '用户' }}</span>
-              </div>
-              <button class="dropdown-item" @click="handleLogout">退出登录</button>
-            </div>
-          </Transition>
-        </div>
-      </div>
-    </header>
-
-    <!-- Mobile Nav -->
-    <Transition name="slide-down">
-      <div v-if="showMobileNav" class="mobile-nav-overlay" @click="showMobileNav = false">
-        <nav class="mobile-nav-panel" @click.stop>
-          <router-link to="/" class="mobile-nav-link" @click="showMobileNav = false">文档库</router-link>
-          <router-link to="/chat" class="mobile-nav-link" @click="showMobileNav = false">AI 助手</router-link>
-          <router-link to="/recent" class="mobile-nav-link" @click="showMobileNav = false">最近</router-link>
-          <router-link to="/training" class="mobile-nav-link active" @click="showMobileNav = false">每日训练</router-link>
-        </nav>
-      </div>
-    </Transition>
+    <AppTopbar activeRoute="training" />
 
     <!-- Main -->
     <main class="main">
       <h1 class="page-title">每日训练</h1>
       <p class="page-subtitle">AI 根据文档库内容出题，每日精进你的技术能力</p>
 
-      <!-- Input Card -->
+      <!-- 条件选择 -->
       <div class="input-card">
-        <div class="preset-chips">
-          <button
-            v-for="p in presets"
-            :key="p"
-            :class="['chip', { active: selectedPreset === p }]"
-            @click="selectPreset(p)"
-          >
-            {{ p }}
-          </button>
-        </div>
-        <div class="input-row">
+        <div class="filter-row">
+          <label class="filter-label">知识点</label>
           <input
-            v-model="input"
+            v-model="selectedTopic"
             class="input-field"
             type="text"
-            placeholder="给我出5道和Vue相关的面试题..."
+            placeholder="如：Vue响应式、数据库事务..."
             :disabled="loading"
-            @keydown.enter="generate"
-          >
-          <button
-            class="btn btn-primary"
-            :disabled="!input.trim() || loading"
-            @click="generate"
-          >
-            {{ loading ? '出题中...' : '开始出题' }}
-          </button>
+            @keydown.enter="startTraining"
+          />
+        </div>
+        <div class="filter-row">
+          <label class="filter-label">难度</label>
+          <div class="difficulty-options">
+            <button
+              v-for="d in [null, 1, 2, 3, 4, 5]"
+              :key="String(d)"
+              :class="['difficulty-btn', { active: selectedDifficulty === d }]"
+              :disabled="loading"
+              @click="selectedDifficulty = d"
+            >
+              {{ d === null ? '全部' : d + '★' }}
+            </button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-label">数量</label>
+          <div class="difficulty-options">
+            <input
+              v-model.number="selectedCount"
+              class="count-input"
+              type="number"
+              min="1"
+              max="50"
+              :disabled="loading"
+            />
+            <span class="count-unit">道</span>
+          </div>
+        </div>
+        <button
+          class="btn btn-primary start-btn"
+          :disabled="loading"
+          @click="startTraining"
+        >
+          {{ loading ? '出题中...' : '开始训练' }}
+        </button>
+        <div v-if="showTimeoutHint" class="timeout-hint">
+          如果是刚上传的文档，需要等待较长时间进行处理
         </div>
       </div>
 
-      <!-- Loading -->
+      <!-- 加载动画 -->
       <div v-if="loading" class="loading-dots">
         <span /><span /><span />
       </div>
 
-      <!-- Error -->
-      <div v-if="error" class="error-box">
-        {{ error }}
+      <!-- 错误提示 -->
+      <div v-if="error" class="error-box">{{ error }}</div>
+
+      <!-- 统计条 -->
+      <div v-if="done" class="score-bar">
+        <span>共 <strong>{{ questions.length }}</strong> 道</span>
+        <span>
+          已掌握 <strong>{{ masterCount }}</strong> |
+          需复习 <strong>{{ reviewCount }}</strong>
+        </span>
+        
       </div>
 
-      <!-- Score Bar -->
-      <div v-if="questions.length > 0" class="score-bar">
-        <span>共 <strong>{{ questions.length }}</strong> 道题目</span>
-        <span>已答 <strong>{{ answeredCount }}</strong> / {{ questions.length }}</span>
-      </div>
-
-      <!-- Questions -->
+      <!-- 题目列表 -->
       <div class="questions-list">
-        <div
-          v-for="(item, idx) in questions"
-          :key="idx"
-          :class="['q-card', { expanded: expanded.has(idx) }]"
-          :style="{ animationDelay: idx * 0.06 + 's' }"
-        >
-          <div class="q-header" @click="toggle(idx)">
-            <div class="q-number">{{ String(idx + 1).padStart(2, '0') }}</div>
-            <div class="q-text">{{ item.q }}</div>
-            <button class="q-toggle" @click.stop="toggle(idx)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <polyline :points="expanded.has(idx) ? '6 15 12 9 18 15' : '6 9 12 15 18 9'" />
-              </svg>
-              {{ expanded.has(idx) ? '收起答案' : '显示答案' }}
-            </button>
-          </div>
-          <div class="q-answer">
-            <div class="q-answer-inner" v-html="renderMarkdown(item.a)" />
-          </div>
-        </div>
+        <template v-if="bankQuestions.length > 0">
+          <div v-if="hasBankAndAdhoc" class="section-label">── 已收录题目 ──</div>
+          <QuestionCard
+            v-for="(q, i) in bankQuestions"
+            :key="q.id ?? 'bank-' + i"
+            :question="q"
+            :index="i"
+            :show-difficulty="true"
+            @vote-difficulty="(level: number) => handleVoteDifficulty(q, level)"
+            @mark-status="(status: 'mastered' | 'review') => handleMarkStatus(q, status)"
+          />
+        </template>
+
+        <template v-if="adHocQuestions.length > 0">
+          <div v-if="hasBankAndAdhoc" class="section-label">── AI 实时生成 ──</div>
+          <QuestionCard
+            v-for="(q, i) in adHocQuestions"
+            :key="'gen-' + i"
+            :question="q"
+            :index="bankQuestions.length + i"
+            :show-difficulty="false"
+            @vote-difficulty="() => {}"
+            @mark-status="() => {}"
+          />
+        </template>
       </div>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
-import { marked } from 'marked'
-import { trainStream } from '../api/chat'
+import { ref, computed, onBeforeUnmount } from 'vue'
+import type { QuestionCard as QuestionCardType } from '../types/api'
+import { voteDifficulty as apiVoteDifficulty, recordPractice } from '../api/training'
+import QuestionCard from '../components/training/QuestionCard.vue'
+import AppTopbar from '../components/AppTopbar.vue'
 
-const router = useRouter()
-const authStore = useAuthStore()
-
-const presets = ['Vue', 'JavaScript', 'Node.js', 'React', 'TypeScript', 'CSS', 'Webpack']
-const input = ref('')
-const selectedPreset = ref('')
+const selectedTopic = ref('')
+const selectedDifficulty = ref<number | null>(null)
+const selectedCount = ref(10)
 const loading = ref(false)
+const showTimeoutHint = ref(false)
 const error = ref('')
-const questions = ref<Array<{ q: string; a: string }>>([])
-const expanded = ref(new Set<number>())
-const showLogout = ref(false)
-const showMobileNav = ref(false)
 
-// 调试信息
-const showDebug = ref(false)
-const debugRetrievalMs = ref(0)
-const debugTtfbMs = ref(0)
-const debugLlmMs = ref(0)
-const debugModel = ref('')
-const debugMaxTokens = ref(0)
-const debugChunks = ref<Array<{ title: string; score: number; preview: string }>>([])
-const questionElapsed = ref<number[]>([])
+const questions = ref<QuestionCardType[]>([])
 
-const answeredCount = computed(() => expanded.value.size)
+const bankQuestions = computed(() =>
+  questions.value.filter((q) => q.source_type !== 'ai_adhoc'),
+)
+const adHocQuestions = computed(() =>
+  questions.value.filter((q) => q.source_type === 'ai_adhoc'),
+)
+const masterCount = computed(() =>
+  questions.value.filter((q) => q.userStatus === 'mastered').length,
+)
+const reviewCount = computed(() =>
+  questions.value.filter((q) => q.userStatus === 'review').length,
+)
+const done = computed(() => questions.value.length > 0 && !loading.value)
+const hasBankAndAdhoc = computed(
+  () => bankQuestions.value.length > 0 && adHocQuestions.value.length > 0,
+)
 
-function selectPreset(p: string) {
-  selectedPreset.value = p
-  input.value = `给我出5道和${p}相关的面试题`
-}
+let timeoutTimer: ReturnType<typeof setTimeout> | null = null
 
-function toggle(idx: number) {
-  const s = new Set(expanded.value)
-  if (s.has(idx)) s.delete(idx); else s.add(idx)
-  expanded.value = s
-}
-
-function renderMarkdown(text: string): string {
-  if (!text) return ''
-  return marked.parse(text, { async: false }) as string
-}
-
-async function generate() {
-  const q = input.value.trim()
-  if (!q || loading.value) return
-
+async function startTraining() {
+  if (loading.value) return
   loading.value = true
   error.value = ''
   questions.value = []
-  expanded.value = new Set()
-  questionElapsed.value = []
+  showTimeoutHint.value = false
+
+  timeoutTimer = setTimeout(() => {
+    showTimeoutHint.value = true
+  }, 60_000)
+
   try {
-    console.log('[train-stream] 开始请求:', q)
-    const body = await trainStream(q)
-    const reader = body.getReader()
+    const response = await fetch('/api/training/generate/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic: selectedTopic.value || undefined,
+        count: selectedCount.value,
+        difficulty: selectedDifficulty.value ?? undefined,
+      }),
+    })
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+    const reader = response.body!.getReader()
     const decoder = new TextDecoder()
     let buf = ''
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-
       buf += decoder.decode(value, { stream: true })
       const lines = buf.split('\n')
       buf = lines.pop() || ''
@@ -194,47 +183,67 @@ async function generate() {
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         const json = line.slice(6).trim()
+        if (json === '[DONE]') continue
         try {
           const data = JSON.parse(json)
-          if (data.type === 'diagnostics') {
-            if (data.phase === 'retrieval') {
-              console.log('[train] 🔍 检索:', data.retrievalMs + 'ms, 模型:', data.model, 'maxTokens:', data.maxTokens, 'chunks:', data.chunkCount)
-            } else if (data.phase === 'llm') {
-              console.log('[train] 🤖 LLM: TTFB=' + data.ttfbMs + 'ms 总=' + data.llmMs + 'ms chunks=' + data.totalChunks)
-            }
-          } else if (data.type === 'question') {
-            questions.value.push(data.question)
-            if (data.elapsedMs) console.log('[train] 📝 题目' + (questions.value.length) + ' (' + data.elapsedMs + 'ms):', data.question.q.slice(0, 50))
-            loading.value = false
-          } else if (data.type === 'done') {
-            console.log('[train] ✅ 完成:', data.total, '道题')
+          if (data.type === 'bank' && Array.isArray(data.questions)) {
+            questions.value.push(...data.questions.map(toCard))
+          } else if (data.type === 'question' && data.question) {
+            questions.value.push(
+              toCard({
+                ...data.question,
+                id: null,
+                source_type: 'ai_adhoc',
+                difficulty: null,
+              }),
+            )
           } else if (data.type === 'error') {
             error.value = data.message
           }
         } catch { /* skip */ }
       }
     }
-  } catch (e: unknown) {
-    console.error('[train-stream] 错误:', e)
-    const err = e as { message?: string }
-    error.value = err?.message || '出题失败，请稍后重试'
+  } catch (e: any) {
+    error.value = e?.message || '出题失败，请稍后重试'
   } finally {
     loading.value = false
+    if (timeoutTimer) clearTimeout(timeoutTimer)
   }
 }
 
-function handleLogout() {
-  showLogout.value = false
-  authStore.logout()
-  router.push('/login')
+function toCard(q: any): QuestionCardType {
+  return {
+    id: q.id ?? null,
+    stem: q.stem || '',
+    explanation: q.explanation || '',
+    difficulty: q.difficulty ?? null,
+    difficulty_votes: q.difficulty_votes ?? [],
+    source_type: q.source_type || 'ai_adhoc',
+    isExpanded: false,
+    userStatus: null,
+  }
 }
 
-function onClickOutside(e: MouseEvent) {
-  if (!(e.target as HTMLElement).closest('.avatar-wrapper')) showLogout.value = false
+async function handleVoteDifficulty(card: QuestionCardType, level: number) {
+  if (!card.id) return
+  try {
+    const res = await apiVoteDifficulty(card.id, level)
+    card.difficulty = res.data.difficulty
+    if (res.data.locked) card.difficulty_votes = []
+  } catch { /* ignore */ }
 }
 
-onMounted(() => document.addEventListener('click', onClickOutside))
-onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
+async function handleMarkStatus(card: QuestionCardType, status: 'mastered' | 'review') {
+  if (!card.id) return
+  card.userStatus = status
+  try {
+    await recordPractice(card.id, status)
+  } catch { card.userStatus = null }
+}
+
+onBeforeUnmount(() => {
+  if (timeoutTimer) clearTimeout(timeoutTimer)
+})
 </script>
 
 <style scoped>
@@ -306,6 +315,42 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
 
 /* Error */
 .error-box { padding: 14px 20px; background: #fef2f2; color: #dc2626; border-radius: 10px; font-size: 0.88rem; margin-bottom: 24px; }
+
+/* Filter */
+.filter-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.filter-label { width: 60px; font-size: 0.85rem; font-weight: 600; color: #6b7280; flex-shrink: 0; }
+.difficulty-options { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.difficulty-btn {
+  padding: 6px 14px; border-radius: 8px; font-size: 0.8rem; font-weight: 500;
+  border: 1px solid #e8e2d7; background: #fff; color: #6b7280; cursor: pointer;
+  font-family: inherit; transition: all 0.15s;
+}
+.difficulty-btn:hover { border-color: #c4873b; color: #c4873b; }
+.difficulty-btn.active { background: #c4873b; color: #fff; border-color: #c4873b; }
+.difficulty-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.count-input {
+  width: 44px; text-align: center; border-radius: 8px;
+  font-size: 0.8rem; font-weight: 500;
+  border: 1px solid #e8e2d7; background: #fff; color: #6b7280;
+  font-family: inherit; padding: 6px 4px; outline: none;
+  -moz-appearance: textfield;
+}
+.count-input:focus { border-color: #c4873b; }
+.count-input::-webkit-outer-spin-button,
+.count-input::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.count-input:disabled { opacity: 0.4; cursor: not-allowed; }
+.count-unit { font-size: 0.82rem; color: #6b7280; display: flex; align-items: center; }
+.start-btn { margin-top: 8px; width: 100%; }
+.timeout-hint {
+  margin-top: 10px; padding: 8px 14px; background: #fef3c7; color: #a06a28;
+  border-radius: 8px; font-size: 0.82rem;
+}
+.section-label {
+  text-align: center; padding: 16px 0 8px; font-size: 0.82rem;
+  color: #9c9488; font-weight: 500; letter-spacing: 0.05em;
+}
 
 /* Score Bar */
 

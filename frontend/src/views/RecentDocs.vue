@@ -1,165 +1,6 @@
 <template>
   <div class="recent-page">
-    <!-- TOP BAR -->
-    <header class="topbar">
-      <router-link
-        to="/"
-        class="logo"
-      >
-        Pap<em>ier</em>
-      </router-link>
-      <button
-        class="hamburger"
-        @click="mobileMenuOpen = !mobileMenuOpen"
-      >
-        <span /><span /><span />
-      </button>
-      <ul class="top-nav">
-        <li>
-          <router-link to="/">
-            文档库
-          </router-link>
-        </li>
-        <li>
-          <router-link to="/chat">
-            AI 助手
-          </router-link>
-        </li>
-        <li><a href="#">集合</a></li>
-        <li>
-          <router-link
-            to="/recent"
-            class="active"
-          >
-            最近
-          </router-link>
-        </li>
-        <li><a href="#">共享给我</a></li>
-        <li><router-link to="/training">每日训练</router-link></li>
-      </ul>
-      <div class="topbar-right">
-        <div class="search-box">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          ><circle
-            cx="11"
-            cy="11"
-            r="8"
-          /><path d="M21 21l-4.35-4.35" /></svg>
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="搜索我上传的文档..."
-            @input="debouncedSearch"
-          >
-        </div>
-        <router-link
-          v-if="authStore.isAdmin"
-          to="/admin"
-          class="btn-admin"
-        >
-          后台管理
-        </router-link>
-        <button
-          v-if="authStore.isAuthenticated"
-          class="btn-upload"
-          @click="showUpload = true"
-        >
-          + 上传文档
-        </button>
-        <router-link
-          v-else
-          to="/login"
-          class="btn-upload"
-          style="text-decoration:none;"
-        >
-          登录
-        </router-link>
-        <div
-          v-if="authStore.user"
-          class="avatar-wrapper"
-        >
-          <div
-            class="avatar"
-            @click="showLogout = !showLogout"
-          >
-            {{ authStore.user.username[0].toUpperCase() }}
-          </div>
-          <Transition name="fade">
-            <div
-              v-if="showLogout"
-              class="avatar-dropdown"
-            >
-              <div class="dropdown-user">
-                <span class="dropdown-name">{{ authStore.user.username }}</span>
-                <span class="dropdown-role">{{ authStore.isAdmin ? '管理员' : '用户' }}</span>
-              </div>
-              <button
-                class="dropdown-item"
-                @click="handleLogout"
-              >
-                退出登录
-              </button>
-            </div>
-          </Transition>
-        </div>
-      </div>
-    </header>
-
-    <!-- Mobile Nav Overlay -->
-    <Transition name="slide-down">
-      <div
-        v-if="mobileMenuOpen"
-        class="mobile-nav-overlay"
-        @click="mobileMenuOpen = false"
-      >
-        <nav
-          class="mobile-nav-panel"
-          @click.stop
-        >
-          <router-link
-            to="/"
-            class="mobile-nav-link"
-            @click="mobileMenuOpen = false"
-          >
-            文档库
-          </router-link>
-          <router-link
-            to="/chat"
-            class="mobile-nav-link"
-            @click="mobileMenuOpen = false"
-          >
-            AI 助手
-          </router-link>
-          <router-link
-            to="/recent"
-            class="mobile-nav-link active"
-            @click="mobileMenuOpen = false"
-          >
-            最近
-          </router-link>
-          <a
-            href="#"
-            class="mobile-nav-link"
-            @click.prevent="mobileMenuOpen = false"
-          >集合</a>
-          <a
-            href="#"
-            class="mobile-nav-link"
-            @click.prevent="mobileMenuOpen = false"
-          >共享给我</a>
-          <router-link
-            to="/training"
-            class="mobile-nav-link"
-            @click="mobileMenuOpen = false"
-          >每日训练</router-link>
-        </nav>
-      </div>
-    </Transition>
+    <AppTopbar activeRoute="recent" />
 
     <!-- MAIN CONTENT -->
     <main class="main">
@@ -272,8 +113,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import AppTopbar from '../components/AppTopbar.vue'
 import { useAuthStore } from '../stores/auth'
 import { list as listDocs } from '../api/document'
 import UploadDialog from '../components/UploadDialog.vue'
@@ -289,9 +131,6 @@ const pageSize = ref(12)
 const loading = ref(false)
 const searchQuery = ref('')
 const showUpload = ref(false)
-const showLogout = ref(false)
-const mobileMenuOpen = ref(false)
-
 let searchTimer: ReturnType<typeof setTimeout>
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
@@ -358,29 +197,14 @@ async function onUploadClose() {
   await loadDocuments()
 }
 
-function handleLogout() {
-  showLogout.value = false
-  authStore.logout()
-  router.push('/login')
-}
-
 function formatDate(d: string) {
   if (!d) return ''
   return new Date(d).toLocaleDateString('zh-CN')
 }
 
-function onClickOutside(e: MouseEvent) {
-  const target = e.target as HTMLElement
-  if (!target.closest('.avatar-wrapper')) showLogout.value = false
-}
-
 onMounted(() => {
-  document.addEventListener('click', onClickOutside)
   if (authStore.isAuthenticated) loadDocuments()
   else router.push('/login')
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('click', onClickOutside)
 })
 </script>
 

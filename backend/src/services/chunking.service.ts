@@ -303,7 +303,7 @@ function addOverlap(chunks: ChunkResult[]): ChunkResult[] {
   return chunks
 }
 
-function estimateTokens(text: string): number {
+export function estimateTokens(text: string): number {
   const chineseChars = (text.match(/[一-鿿]/g) || []).length
   const englishWords = (text.match(/[a-zA-Z]+/g) || []).length
   return Math.ceil(chineseChars + englishWords * 1.3)

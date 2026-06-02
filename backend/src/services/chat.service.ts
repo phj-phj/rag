@@ -110,13 +110,14 @@ export async function* askDocumentStream(
 export async function askDocumentForTraining(
   question: string,
   chunks: ChunkInput[],
+  systemPrompt: string,
 ): Promise<string> {
   const chunksText = chunks.map((c, i) =>
     `【${c.title}】\n${c.content}`
   ).join('\n\n---\n\n')
 
   const prompt = ChatPromptTemplate.fromMessages([
-    ['system', TRAINING_SYSTEM_PROMPT],
+    ['system', systemPrompt],
     ['user', '{question}'],
   ])
 
@@ -150,6 +151,7 @@ export type TrainingStreamEvent =
 export async function startTrainingStream(
   question: string,
   chunks: ChunkInput[],
+  systemPrompt: string,
 ): Promise<{
   diagnostics: TrainingDiagnostics
   stream: AsyncGenerator<TrainingStreamEvent, void, unknown>
@@ -166,7 +168,7 @@ export async function startTrainingStream(
   }
 
   const prompt = ChatPromptTemplate.fromMessages([
-    ['system', TRAINING_SYSTEM_PROMPT],
+    ['system', systemPrompt],
     ['user', '{question}'],
   ])
 
@@ -247,14 +249,3 @@ class IncrementalJsonParser {
     return this.buf
   }
 }
-
-const TRAINING_SYSTEM_PROMPT = `你是 Papier 出题助手。根据以下参考资料生成题目。
-
-要求：
-1. 生成用户需要的题目数量
-2. 每道题目附带答案，答案要详细、从参考资料中提取
-3. 必须以 JSON 数组格式输出，不要输出其他内容
-4. JSON 格式：[{{"q": "题目", "a": "答案"}}, ...]
-
-参考资料：
-{chunks}`

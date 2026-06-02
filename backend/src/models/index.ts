@@ -5,6 +5,8 @@ import Document from './Document'
 import DocumentTag from './DocumentTag'
 import Favorite from './Favorite'
 import DocumentChunk from './DocumentChunk'
+import Question from './Question'
+import PracticeRecord from './PracticeRecord'
 
 export function defineAssociations(): void {
   User.hasMany(Document, { foreignKey: 'uploader_id', as: 'documents' })
@@ -21,6 +23,16 @@ export function defineAssociations(): void {
 
   Document.hasMany(DocumentChunk, { foreignKey: 'document_id', as: 'chunks' })
   DocumentChunk.belongsTo(Document, { foreignKey: 'document_id', as: 'document' })
+
+  // 新增关联
+  Document.hasMany(Question, { foreignKey: 'source_document_id', as: 'questions' })
+  Question.belongsTo(Document, { foreignKey: 'source_document_id', as: 'sourceDocument' })
+
+  Question.hasMany(PracticeRecord, { foreignKey: 'question_id', as: 'practiceRecords' })
+  PracticeRecord.belongsTo(Question, { foreignKey: 'question_id', as: 'question' })
+
+  User.hasMany(PracticeRecord, { foreignKey: 'user_id', as: 'practiceRecords' })
+  PracticeRecord.belongsTo(User, { foreignKey: 'user_id', as: 'user' })
 }
 
-export { User, Category, Tag, Document, DocumentTag, Favorite, DocumentChunk }
+export { User, Category, Tag, Document, DocumentTag, Favorite, DocumentChunk, Question, PracticeRecord }

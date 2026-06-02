@@ -468,3 +468,83 @@
 - 更新 `docs/ai-optimization.md`：P0-P3 完整优化清单
 - 更新 `SETUP.md`：本地开发环境搭建指南
 - 更新 `backend/.env.example`：Embedding 配置改为智谱变量名
+
+## 2026-06-02
+
+### AI 助手污染修复
+
+- **问题**：AI 助手聊天框返回内容被题库文档的原始 Q&A 文本污染，输出类似 `【面经4.9.pdf】 完成，data/methods 可用...` 的乱码
+- **根因**：题库文档（面经4.9.pdf、4.20金山一面.pdf 等）同时走了 RAG 分块和题目提取两条流程，RAG 分块将原始 Q&A 文本写入了 LanceDB，AI 助手检索到这些 chunk 后直接被 LLM 原样输出
+- **修复**（`document.controller.ts`）：`chunkDocument()` 重构为先检测文档类型再决定处理流程
+  - 题库文档（`question_bank`）：只执行题目提取，**跳过 RAG 分块**（不写 MySQL `Document_Chunks`、不写 LanceDB）
+  - 知识文档（`knowledge`）：正常 RAG 分块 + 向量化 + 预生成题目
+- **清理存量污染**：编写 `clean-questionbank-chunks.ts`，删除 paper.pdf（49）、4.20金山一面.pdf（7）、面经4.9.pdf（207）共 **263 个污染 chunks**（MySQL + LanceDB 双向清理）
+- **文档类型检测增强**（`document-classifier.service.ts`）：新增题号密度快速判定，每 20 行中出现 1 个以上题号模式（`1.`、`（2）`、`一、`）直接判为题库文档，避免依赖 embedding API 的语义连贯性分析误判
+
+### chat.service.ts 恢复与解耦
+
+- **恢复原始提示词**：从 `D:\AI\AI-web` 备份恢复 `SYSTEM_PROMPT` 和 `TRAINING_SYSTEM_PROMPT` 原始内容
+- **训练提示词移出**：`TRAINING_SYSTEM_PROMPT` 从 `chat.service.ts` 中移除，改为函数参数 `systemPrompt` 传入
+  - `askDocumentForTraining(question, chunks)` → `askDocumentForTraining(question, chunks, systemPrompt)`
+  - `startTrainingStream(question, chunks)` → `startTrainingStream(question, chunks, systemPrompt)`
+- **各模块提示词独立**：
+  - AI 助手 → `chat.service.ts` 的 `SYSTEM_PROMPT`
+  - 训练出题 → `training.controller.ts` 的 `TRAINING_PROMPT`（含禁止引用规则 5-6）
+  - 预生成 → `question-generation.service.ts` 的 `GENERATION_PROMPT`
+  - 题目提取 → `question-extraction.service.ts` 的 `EXTRACTION_PROMPT`
+
+### 项目清理
+
+- **删除死文件**（7个）：`backend/app.js`、`backend/config/db.js`、`frontend/src/layouts/AdminLayout.vue`、根目录 `index.html`、`recent-preview.html`、`daily-training-preview.html`
+- **清理 `backend/package.json`**：移除失效的 `ensure-indexes` 脚本（源文件不存在）
+- **清理根 `package.json`**：移除 `marked`、`pdfjs-dist`（前端专属依赖）、`husky`、`lint-staged`（`.husky/` 目录不存在，从未生效）、`"prepare"` 脚本、`"lint-staged"` 配置块
+- **导航栏清理**：删除 DocumentLibrary、ChatView、RecentDocs 三个页面的"集合"和"共享给我"导航项（桌面 + 移动端，共 12 处）
+
+### 首页排序修复
+
+- **问题**：首页"最近更新"文档列表不展示文档
+- **修复**：
+  - `document.controller.ts`：列表排序从 `updated_at DESC` 改为 `created_at DESC`，按上传先后顺序展示
+  - `admin.controller.ts`：管理后台文档列表同步改为 `created_at DESC`
+  - `validators/validate.ts`：Express 5 的 `req.query` 为只读属性，`(req as any).query = result.data` 改为 `(req as any).parsedQuery = result.data`
+  - `document.controller.ts`：`list()` 函数改为读取 `parsedQuery` 备选 `req.query`
+
+### 训练模块优化
+
+- **出题数量保证**：
+  - 非流式 `aiGenerateAdhoc`：要求 LLM 生成 `count × 1.5` 道题，打乱后截断到精确 `count`
+  - 流式 `generateStream`：多要 50%，只输出前 `needCount` 道
+  - 预生成 `preGenerateQuestions`：每块分配量 `× 1.4`，prompt 改为"生成至少 X 道"
+- **数量输入框**：预设按钮（10/20/30）改为自定义数字输入框（1-50），隐藏上下箭头，宽度对齐难度按钮
+- **`question-utils.ts`**：
+  - `parseExtractionResponse` 重写：剥离代码块 → 直接解析 → 正则提取数组 → 逐对象正则提取，四层兜底
+  - 新增 `stripQuestionNumber()` 去除题目前导序号（`31.`、`（2）`、`一、`）
+- **`question-extraction.service.ts`**：提取题干时调用 `stripQuestionNumber()` 清洗序号
+- **`question-generation.service.ts`**：预生成 prompt 新增禁止引用规则（题干/答案禁止"根据面经""参考资料显示"等表述）
+
+### 前端架构改进
+
+- **AppTopbar 组件提取**（`components/AppTopbar.vue`）：
+  - 从 5 个页面（DocumentLibrary、ChatView、RecentDocs、DailyTraining、CollectedQuestions）提取重复的头部导航栏为独立组件
+  - `activeRoute` prop 控制当前高亮导航项（home/chat/recent/training/collected）
+  - `#controls` 插槽支持页面注入专属控件（搜索框、上传按钮、后台管理链接）
+  - 内置头像下拉菜单、退出登录、移动端汉堡菜单 + 覆盖层导航
+  - 所有 topbar/mobile-nav/avatar/logout 逻辑只维护一份
+- **问答表格清理**：QuestionCard 组件移除 `knowledge_point` 分类标签
+
+### "已收录"页面
+
+- **后端 API**（`training.controller.ts` + `training.routes.ts`）：
+  - `GET /api/training/questions` — 已收录题目列表（分页 + 知识点搜索 + 来源类型筛选 + 难度筛选）
+  - `GET /api/training/questions/stats` — 统计（总收录数/文档提取数/AI 预生成数/覆盖知识点数）
+- **前端页面**（`views/CollectedQuestions.vue`）：
+  - 4 张统计卡片 + 筛选栏（知识点搜索 / 来源类型 / 难度星级）+ 题目卡片列表（展开查看答案/markdown 渲染）+ 动态窗口分页器
+  - 路由 `/collected`，全站 5 个页面均添加"已收录"导航链接
+- **静态预览**（`docs/收录页面预览.html`）：独立 HTML 设计稿，含 12 道模拟题目和完整交互
+
+### 构建验证
+
+- 前后端 TypeScript 编译均通过（`tsc --noEmit` + `vue-tsc --noEmit`）
+- 后端 API 健康检查 `/health` 正常，MySQL 连接正常
+- 训练 API `/api/training/generate` 正常返回题目
+- Questions 表统计：总计 252 题（提取 48 + 预生成 204）

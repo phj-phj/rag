@@ -6,6 +6,7 @@ const MODEL = process.env.EMBED_MODEL || 'embedding-2'
 
 let dims = 0
 
+
 /**
  * 批量文本 → 向量（自动截断超长文本）
  */

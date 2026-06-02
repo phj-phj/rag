@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { Document, Favorite, User, Category, Tag } from '../models'
 import { getFileUrl } from '../services/file.service'
+import { NotFoundError, BadRequestError } from '../utils/errors'
 
 function docToJson(doc: Document): Record<string, unknown> {
   const d = (doc.toJSON() as unknown) as Record<string, unknown>
@@ -37,14 +38,12 @@ export async function list(req: Request, res: Response): Promise<void> {
 export async function add(req: Request, res: Response): Promise<void> {
   const documentId = Number(req.params.documentId) || Number(req.body.document_id)
   if (!documentId) {
-    res.status(400).json({ message: '请指定文档ID' })
-    return
+    throw new BadRequestError('请指定文档ID')
   }
 
   const doc = await Document.findByPk(documentId)
   if (!doc) {
-    res.status(404).json({ message: '文档不存在' })
-    return
+    throw new NotFoundError('文档不存在')
   }
 
   await Favorite.findOrCreate({

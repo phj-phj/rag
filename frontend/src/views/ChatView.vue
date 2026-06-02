@@ -3,125 +3,7 @@
     class="chat-page"
     :class="{ 'split-mode': splitDocId }"
   >
-    <!-- TOP BAR -->
-    <header class="topbar">
-      <router-link
-        to="/"
-        class="logo"
-      >
-        Pap<em>ier</em>
-      </router-link>
-      <button
-        class="hamburger"
-        @click="showMobileNav = !showMobileNav"
-      >
-        <span /><span /><span />
-      </button>
-      <ul class="top-nav">
-        <li>
-          <router-link to="/">
-            文档库
-          </router-link>
-        </li>
-        <li>
-          <router-link
-            to="/chat"
-            class="active"
-          >
-            AI 助手
-          </router-link>
-        </li>
-        <li>
-          <router-link to="/recent">
-            最近
-          </router-link>
-        </li>
-        <li><a href="#">集合</a></li>
-        <li><a href="#">共享给我</a></li>
-        <li><router-link to="/training">每日训练</router-link></li>
-      </ul>
-      <div class="topbar-right">
-        <div
-          v-if="authStore.user"
-          class="avatar-wrapper"
-        >
-          <div
-            class="avatar"
-            @click="showLogout = !showLogout"
-          >
-            {{ authStore.user.username[0].toUpperCase() }}
-          </div>
-          <Transition name="fade">
-            <div
-              v-if="showLogout"
-              class="avatar-dropdown"
-            >
-              <div class="dropdown-user">
-                <span class="dropdown-name">{{ authStore.user.username }}</span>
-                <span class="dropdown-role">{{ authStore.isAdmin ? '管理员' : '用户' }}</span>
-              </div>
-              <button
-                class="dropdown-item"
-                @click="handleLogout"
-              >
-                退出登录
-              </button>
-            </div>
-          </Transition>
-        </div>
-      </div>
-    </header>
-
-    <!-- Mobile Nav Overlay -->
-    <Transition name="slide-down">
-      <div
-        v-if="showMobileNav"
-        class="mobile-nav-overlay"
-        @click="showMobileNav = false"
-      >
-        <nav
-          class="mobile-nav-panel"
-          @click.stop
-        >
-          <router-link
-            to="/"
-            class="mobile-nav-link"
-            @click="showMobileNav = false"
-          >
-            文档库
-          </router-link>
-          <router-link
-            to="/chat"
-            class="mobile-nav-link active"
-            @click="showMobileNav = false"
-          >
-            AI 助手
-          </router-link>
-          <router-link
-            to="/recent"
-            class="mobile-nav-link"
-            @click="showMobileNav = false"
-          >
-            最近
-          </router-link>
-          <a
-            href="#"
-            class="mobile-nav-link"
-            @click.prevent="showMobileNav = false"
-          >集合</a>
-          <a
-            href="#"
-            class="mobile-nav-link"
-            @click.prevent="showMobileNav = false"
-          >共享给我</a>
-          <router-link
-            to="/training"
-            class="mobile-nav-link"
-            @click="showMobileNav = false"
-          >每日训练</router-link>
-        </nav>
-      </div>
-    </Transition>
+    <AppTopbar activeRoute="chat" />
 
     <!-- MAIN -->
     <main class="main">
@@ -251,6 +133,7 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import AppTopbar from '../components/AppTopbar.vue'
 import { useAuthStore } from '../stores/auth'
 import { askStream } from '../api/chat'
 import { marked } from 'marked'

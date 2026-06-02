@@ -4,14 +4,23 @@ import { retrieve } from '../services/retrieval.service'
 import { rewriteQuery } from '../services/rewrite.service'
 import { routeQuery } from '../services/router.service'
 import { debugPhase, debugInfo, debugRetrieval, debugConfidence, debugLLM, debugTiming, debugRoute } from '../utils/debug'
+import { BadRequestError } from '../utils/errors'
+
+const TRAINING_PROMPT = `你是 Papier 出题助手。根据以下参考资料生成题目。
+
+要求：
+1. 生成用户需要的题目数量
+2. 每道题目附带答案，答案要详细、从参考资料中提取
+3. 必须以 JSON 数组格式输出，不要输出其他内容
+4. JSON 格式：[{{"q": "题目", "a": "答案"}}, ...]
+5. 题目必须自包含：题干中禁止出现"根据面经""结合本文""参考资料"等引用来源的表述
+6. 答案中禁止出现"根据面经""参考资料显示""文中提到"等字样，直接给出知识点内容
+
+参考资料：
+{chunks}`
 
 export async function ask(req: Request, res: Response): Promise<void> {
   const { question } = req.body
-
-  if (!question || typeof question !== 'string') {
-    res.status(400).json({ message: '请输入问题' })
-    return
-  }
 
   debugPhase('收到问题 (非流式)')
   debugInfo('原始问题', question)
@@ -55,18 +64,7 @@ export async function ask(req: Request, res: Response): Promise<void> {
     const topDoc = filtered[0]
     const docs = topDoc ? [{ id: topDoc.documentId, title: topDoc.documentTitle }] : []
 
-    // ── 快速通道：直接拼接检索结果 ──
-    if (route.verdict === 'fast') {
-      const answer = filtered.slice(0, 3).map(c =>
-        `【${c.documentTitle}】\n${c.content}`
-      ).join('\n\n---\n\n')
-      debugInfo('快速通道', `直接返回${filtered.slice(0, 3).length}条片段`)
-      debugTiming()
-      res.json({ answer, model: 'retrieval-direct', docs })
-      return
-    }
-
-    // ── 深度通道：LLM 生成 ──
+    // ── LLM 生成 ──
     const chunks = filtered.map(r => ({
       title: r.documentTitle,
       content: r.content,
@@ -89,11 +87,6 @@ export async function ask(req: Request, res: Response): Promise<void> {
 
 export async function askStream(req: Request, res: Response): Promise<void> {
   const { question } = req.body
-
-  if (!question || typeof question !== 'string') {
-    res.status(400).json({ message: '请输入问题' })
-    return
-  }
 
   debugPhase('收到问题 (流式)')
   debugInfo('原始问题', question)
@@ -146,32 +139,7 @@ export async function askStream(req: Request, res: Response): Promise<void> {
     const topDoc = filtered[0]
     const docs = topDoc ? [{ id: topDoc.documentId, title: topDoc.documentTitle }] : []
 
-    // ── 快速通道流式 ──
-    if (route.verdict === 'fast') {
-      debugInfo('快速通道(流式)', `直接返回${filtered.slice(0, 3).length}条片段`)
-      debugTiming()
-
-      res.setHeader('Content-Type', 'text/event-stream')
-      res.setHeader('Cache-Control', 'no-cache')
-      res.setHeader('Connection', 'keep-alive')
-      res.flushHeaders()
-
-      res.write(`data: ${JSON.stringify({ type: 'docs', docs })}\n\n`)
-
-      const answer = filtered.slice(0, 3).map(c =>
-        `【${c.documentTitle}】\n${c.content}`
-      ).join('\n\n')
-
-      const tokens = answer.split('')
-      for (let i = 0; i < tokens.length; i += 3) {
-        res.write(`data: ${JSON.stringify({ type: 'token', content: tokens.slice(i, i + 3).join('') })}\n\n`)
-      }
-      res.write('data: [DONE]\n\n')
-      res.end()
-      return
-    }
-
-    // ── 深度通道：LLM 流式生成 ──
+    // ── LLM 流式生成 ──
     // SSE 头
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache')
@@ -215,11 +183,6 @@ export async function askStream(req: Request, res: Response): Promise<void> {
 export async function train(req: Request, res: Response): Promise<void> {
   const { question } = req.body
 
-  if (!question || typeof question !== 'string') {
-    res.status(400).json({ message: '请输入出题需求' })
-    return
-  }
-
   console.log(`[train] 收到出题需求，长度: ${question.length} 字`)
 
   try {
@@ -239,7 +202,7 @@ export async function train(req: Request, res: Response): Promise<void> {
 
     // 3. 组装 chunks 发给 LLM 出题
     const chunks = retrieved.map(r => ({ title: r.documentTitle, content: r.content, score: r.score }))
-    const answer = await askDocumentForTraining(question, chunks)
+    const answer = await askDocumentForTraining(question, chunks, TRAINING_PROMPT)
 
     // 4. 解析 JSON
     console.log('[train] LLM 返回长度:', answer.length, '字，结尾30字:', answer.slice(-30))
@@ -261,11 +224,6 @@ export async function train(req: Request, res: Response): Promise<void> {
 
 export async function trainStream(req: Request, res: Response): Promise<void> {
   const { question } = req.body
-
-  if (!question || typeof question !== 'string') {
-    res.status(400).json({ message: '请输入出题需求' })
-    return
-  }
 
   const reqStart = Date.now()
   console.log(`[train-stream] 收到出题需求，长度: ${question.length} 字`)
@@ -300,7 +258,7 @@ export async function trainStream(req: Request, res: Response): Promise<void> {
   res.flushHeaders()
 
   try {
-    const { diagnostics, stream } = await startTrainingStream(question, chunks)
+    const { diagnostics, stream } = await startTrainingStream(question, chunks, TRAINING_PROMPT)
 
     // 先发 docs + 检索阶段 diagnostics
     res.write(`data: ${JSON.stringify({ type: 'docs', docs })}\n\n`)

@@ -3,6 +3,7 @@ import { Op } from 'sequelize'
 import bcrypt from 'bcryptjs'
 import { Document, Category, Tag, User } from '../models'
 import { deleteFile, getFileUrl } from '../services/file.service'
+import { NotFoundError, BadRequestError } from '../utils/errors'
 
 function docToJson(doc: Document): Record<string, unknown> {
   const d = (doc.toJSON() as unknown) as Record<string, unknown>
@@ -69,9 +70,10 @@ export async function getStats(_req: Request, res: Response): Promise<void> {
 }
 
 export async function getDocuments(req: Request, res: Response): Promise<void> {
-  const page = Math.max(1, Number(req.query.page) || 1)
-  const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20))
-  const { title, category_id, tags } = req.query
+  const q = (req as any).query
+  const page = Math.max(1, Number(q.page) || 1)
+  const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 20))
+  const { title, category_id, tags } = q
 
   const where: Record<string, unknown> = {}
 
@@ -112,7 +114,7 @@ export async function getDocuments(req: Request, res: Response): Promise<void> {
   const { count, rows } = await Document.findAndCountAll({
     where,
     include,
-    order: [['updated_at', 'DESC']],
+    order: [['created_at', 'DESC']],
     limit: pageSize,
     offset: (page - 1) * pageSize,
     distinct: true,
@@ -124,8 +126,7 @@ export async function getDocuments(req: Request, res: Response): Promise<void> {
 export async function updateDocument(req: Request, res: Response): Promise<void> {
   const doc = await Document.findByPk(Number(req.params.id))
   if (!doc) {
-    res.status(404).json({ message: '文档不存在' })
-    return
+    throw new NotFoundError('文档不存在')
   }
 
   const { title, category_id, tags } = req.body
@@ -154,14 +155,12 @@ export async function updateDocument(req: Request, res: Response): Promise<void>
 export async function replaceDocumentFile(req: Request, res: Response): Promise<void> {
   const doc = await Document.findByPk(Number(req.params.id))
   if (!doc) {
-    res.status(404).json({ message: '文档不存在' })
-    return
+    throw new NotFoundError('文档不存在')
   }
 
   const file = req.file
   if (!file) {
-    res.status(400).json({ message: '请选择要替换的文件' })
-    return
+    throw new BadRequestError('请选择要替换的文件')
   }
 
   await deleteFile(doc.file_path)
@@ -185,8 +184,7 @@ export async function replaceDocumentFile(req: Request, res: Response): Promise<
 export async function deleteDocument(req: Request, res: Response): Promise<void> {
   const doc = await Document.findByPk(Number(req.params.id))
   if (!doc) {
-    res.status(404).json({ message: '文档不存在' })
-    return
+    throw new NotFoundError('文档不存在')
   }
 
   await deleteFile(doc.file_path)
@@ -219,16 +217,10 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
 export async function updateUserPassword(req: Request, res: Response): Promise<void> {
   const user = await User.findByPk(Number(req.params.id))
   if (!user) {
-    res.status(404).json({ message: '用户不存在' })
-    return
+    throw new NotFoundError('用户不存在')
   }
 
   const { password } = req.body
-  if (!password || password.length < 6) {
-    res.status(400).json({ message: '密码长度不能少于6位' })
-    return
-  }
-
   user.password = await bcrypt.hash(password, 10)
   await user.save()
 

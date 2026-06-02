@@ -3,25 +3,19 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import env from '../config/env'
 import { User } from '../models'
+import { UnauthorizedError } from '../utils/errors'
 
 export async function login(req: Request, res: Response): Promise<void> {
   const { username, password } = req.body
 
-  if (!username || !password) {
-    res.status(400).json({ message: '用户名和密码不能为空' })
-    return
-  }
-
   const user = await User.findOne({ where: { username } })
   if (!user) {
-    res.status(401).json({ message: '用户名或密码错误' })
-    return
+    throw new UnauthorizedError('用户名或密码错误')
   }
 
   const isValid = await bcrypt.compare(password, user.password)
   if (!isValid) {
-    res.status(401).json({ message: '用户名或密码错误' })
-    return
+    throw new UnauthorizedError('用户名或密码错误')
   }
 
   const payload = { id: user.id, username: user.username, role: user.role }
@@ -39,21 +33,6 @@ export async function login(req: Request, res: Response): Promise<void> {
 
 export async function register(req: Request, res: Response): Promise<void> {
   const { username, password } = req.body
-
-  if (!username || !password) {
-    res.status(400).json({ message: '用户名和密码不能为空' })
-    return
-  }
-
-  if (username.length < 3 || username.length > 50) {
-    res.status(400).json({ message: '用户名长度需要在3-50个字符之间' })
-    return
-  }
-
-  if (password.length < 6) {
-    res.status(400).json({ message: '密码长度不能少于6位' })
-    return
-  }
 
   const existing = await User.findOne({ where: { username } })
   if (existing) {

@@ -93,3 +93,19 @@ export interface AuthResponse {
   token: string
   user: AuthUser
 }
+
+// ── 训练 ──
+
+export interface TrainingQuestion {
+  id: number | null
+  stem: string
+  explanation: string
+  difficulty: number | null
+  difficulty_votes?: number[]
+  source_type: 'extracted' | 'ai_pregenerated' | 'ai_adhoc'
+}
+
+export interface QuestionCard extends TrainingQuestion {
+  isExpanded: boolean
+  userStatus: 'mastered' | 'review' | null
+}

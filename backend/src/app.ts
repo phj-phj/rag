@@ -11,7 +11,10 @@ import adminRoutes from './routes/admin.routes'
 import categoryRoutes from './routes/category.routes'
 import tagRoutes from './routes/tag.routes'
 import chatRoutes from './routes/chat.routes'
+import trainingRoutes from './routes/training.routes'
 import { compactTable, ensureIndexes } from './services/retrieval.service'
+import { requestId } from './middlewares/requestId'
+import { errorHandler } from './middlewares/errorHandler'
 
 dotenv.config()
 
@@ -20,6 +23,7 @@ defineAssociations()
 const app = express()
 const PORT = process.env.PORT || 3000
 
+app.use(requestId)
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
@@ -36,10 +40,22 @@ app.use('/api/admin', adminRoutes)
 app.use('/api/categories', categoryRoutes)
 app.use('/api/tags', tagRoutes)
 app.use('/api/chat', chatRoutes)
+app.use('/api/training', trainingRoutes)
+
+app.get('/health', async (_req, res) => {
+  try {
+    await sequelize.authenticate()
+    res.json({ status: 'ok', mysql: 'connected', uptime: process.uptime() })
+  } catch {
+    res.status(503).json({ status: 'error', mysql: 'disconnected' })
+  }
+})
 
 app.get('/', (_req, res) => {
   res.json({ message: 'Papier API 服务运行中' })
 })
+
+app.use(errorHandler)
 
 sequelize.authenticate()
   .then(() => {

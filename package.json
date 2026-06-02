@@ -1,16 +1,4 @@
 {
-  "devDependencies": {
-    "husky": "^9.1.7",
-    "lint-staged": "^15.5.2"
-  },
-  "scripts": {
-    "prepare": "husky"
-  },
-  "lint-staged": {
-    "frontend/src/**/*.{js,ts,vue}": "frontend/node_modules/.bin/eslint --fix --config frontend/eslint.config.js"
-  },
-  "dependencies": {
-    "marked": "^18.0.4",
-    "pdfjs-dist": "^5.7.284"
-  }
+  "name": "ai-web",
+  "private": true
 }

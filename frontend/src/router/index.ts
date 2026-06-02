@@ -43,6 +43,11 @@ const router = createRouter({
       component: () => import('../views/DocViewer.vue'),
     },
     {
+      path: '/collected',
+      name: 'CollectedQuestions',
+      component: () => import('../views/CollectedQuestions.vue'),
+    },
+    {
       path: '/admin',
       name: 'AdminDashboard',
       component: () => import('../views/AdminDashboard.vue'),

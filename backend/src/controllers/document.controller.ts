@@ -6,8 +6,10 @@ import { Document, Category, Tag, User, DocumentChunk } from '../models'
 import { deleteFile, getFileUrl } from '../services/file.service'
 import { extractDocxText, extractDocxImages, extractDocxHtml, extractPdfText, extractPdfHtml, cleanText, getDocumentTextForChunking } from '../services/extraction.service'
 import { splitIntoChunks } from '../services/chunking.service'
+import { estimateTokens } from '../services/chunking.service'
 import { embedTexts } from '../services/embedding.service'
 import { indexChunks, deleteDocumentChunks, ensureIndexes } from '../services/retrieval.service'
+import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/errors'
 
 function docToJson(doc: Document): Record<string, unknown> {
   const d = (doc.toJSON() as unknown) as Record<string, unknown>
@@ -16,9 +18,10 @@ function docToJson(doc: Document): Record<string, unknown> {
 }
 
 export async function list(req: Request, res: Response): Promise<void> {
-  const page = Math.max(1, Number(req.query.page) || 1)
-  const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20))
-  const { title, category_id, tags, is_featured, uploader_id } = req.query
+  const query = (req as any).parsedQuery || req.query
+  const page = Number(query.page) || 1
+  const pageSize = Number(query.pageSize) || 20
+  const { title, category_id, tags, is_featured, uploader_id } = query
 
   const where: Record<string, unknown> = {}
 
@@ -68,7 +71,7 @@ export async function list(req: Request, res: Response): Promise<void> {
   const { count, rows } = await Document.findAndCountAll({
     where,
     include,
-    order: [['updated_at', 'DESC']],
+    order: [['created_at', 'DESC']],
     limit: pageSize,
     offset: (page - 1) * pageSize,
     distinct: true,
@@ -87,8 +90,7 @@ export async function getById(req: Request, res: Response): Promise<void> {
   } as any)
 
   if (!doc) {
-    res.status(404).json({ message: '文档不存在' })
-    return
+    throw new NotFoundError('文档不存在')
   }
 
   res.json(docToJson(doc))
@@ -105,8 +107,7 @@ function decodeFilename(name: string): string {
 export async function create(req: Request, res: Response): Promise<void> {
   const files = req.files as Express.Multer.File[]
   if (!files || files.length === 0) {
-    res.status(400).json({ message: '请选择要上传的文件' })
-    return
+    throw new BadRequestError('请选择要上传的文件')
   }
 
   const { category_id, tags: tagsStr } = req.body
@@ -202,10 +203,27 @@ async function chunkDocument(docId: number, filePath: string, fileType: string):
 
     console.log(`[RAG] 文档 ${docId} 向量化+索引完成：${embeddings.length} 个向量`)
 
-    // 确保向量索引存在（首次创建后自动跳过）
-    await ensureIndexes().catch(e =>
-      console.warn('[RAG] 索引创建跳过:', (e as Error).message)
-    )
+    // ── 文档类型检测 + 题目提取/预生成 ──
+    try {
+      const { detectDocumentType } = await import('../services/document-classifier.service')
+      const { extractQuestionsFromDocument } = await import('../services/question-extraction.service')
+      const { preGenerateQuestions } = await import('../services/question-generation.service')
+
+      const docType = await detectDocumentType(text)
+      console.log(`[RAG] 文档 ${docId} 类型: ${docType}`)
+
+      if (docType === 'question_bank') {
+        await extractQuestionsFromDocument(docId, filePath, fileType)
+      } else {
+        const tokenCount = estimateTokens(text)
+        const targetCount = Math.floor(tokenCount / 100)
+        if (targetCount > 0) {
+          await preGenerateQuestions(docId, targetCount, filePath, fileType)
+        }
+      }
+    } catch (err) {
+      console.error(`[RAG] 题目处理失败 (文档${docId}):`, (err as Error).message)
+    }
   } catch (err) {
     console.error(`[RAG] 文档 ${docId} 切块失败:`, (err as Error).message)
   }
@@ -215,13 +233,11 @@ export async function remove(req: Request, res: Response): Promise<void> {
   const doc = await Document.findByPk(Number(req.params.id))
 
   if (!doc) {
-    res.status(404).json({ message: '文档不存在' })
-    return
+    throw new NotFoundError('文档不存在')
   }
 
   if (doc.uploader_id !== req.user!.id && req.user!.role !== 'admin') {
-    res.status(403).json({ message: '无权删除此文档' })
-    return
+    throw new ForbiddenError('无权删除此文档')
   }
 
   // 级联清理 RAG 数据
@@ -236,8 +252,7 @@ export async function remove(req: Request, res: Response): Promise<void> {
 export async function getContent(req: Request, res: Response): Promise<void> {
   const doc = await Document.findByPk(Number(req.params.id))
   if (!doc) {
-    res.status(404).json({ message: '文档不存在' })
-    return
+    throw new NotFoundError('文档不存在')
   }
 
   const fullPath = path.resolve(__dirname, '../../', doc.file_path)
@@ -261,8 +276,7 @@ export async function getContent(req: Request, res: Response): Promise<void> {
     } else if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'tif'].includes(type)) {
       text = '' // 图片直接展示
     } else {
-      res.status(400).json({ message: '不支持的文件类型' })
-      return
+      throw new BadRequestError('不支持的文件类型')
     }
 
     res.json({ text, html, file_type: type, images })
