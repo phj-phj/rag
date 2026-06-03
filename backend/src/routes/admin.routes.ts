@@ -7,6 +7,9 @@ import {
   deleteDocument,
   getUsers,
   updateUserPassword,
+  getQuestions,
+  deleteQuestion,
+  batchDeleteQuestions,
 } from '../controllers/admin.controller'
 import { authenticate, requireAdmin } from '../middlewares/auth'
 import { uploadSingle } from '../middlewares/upload'
@@ -25,5 +28,8 @@ router.post('/documents/:id/replace', uploadSingle, replaceDocumentFile)
 router.delete('/documents/:id', deleteDocument)
 router.get('/users', getUsers)
 router.put('/users/:id/password', validate(updatePasswordSchema), updateUserPassword)
+router.get('/questions', getQuestions)
+router.delete('/questions/:id', deleteQuestion)
+router.post('/questions/batch-delete', batchDeleteQuestions)
 
 export default router

@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { Op } from 'sequelize'
 import bcrypt from 'bcryptjs'
-import { Document, Category, Tag, User } from '../models'
+import { Document, Category, Tag, User, Question } from '../models'
 import { deleteFile, getFileUrl } from '../services/file.service'
 import { NotFoundError, BadRequestError } from '../utils/errors'
 
@@ -225,4 +225,47 @@ export async function updateUserPassword(req: Request, res: Response): Promise<v
   await user.save()
 
   res.json({ message: '密码已更新' })
+}
+
+// ── 题库管理 ──
+
+export async function getQuestions(req: Request, res: Response): Promise<void> {
+  const page = Math.max(1, Number(req.query.page) || 1)
+  const pageSize = Math.min(50, Math.max(1, Number(req.query.pageSize) || 20))
+  const keyword = req.query.keyword as string | undefined
+  const sourceType = req.query.source_type as string | undefined
+
+  const where: any = { source_type: ['extracted', 'ai_pregenerated'] }
+  if (sourceType && sourceType !== 'all') where.source_type = sourceType
+  if (keyword) {
+    where[Op.or] = [
+      { stem: { [Op.like]: `%${keyword}%` } },
+      { knowledge_point: { [Op.like]: `%${keyword}%` } },
+    ]
+  }
+
+  const { count, rows } = await Question.findAndCountAll({
+    where,
+    order: [['id', 'DESC']],
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  })
+
+  res.json({ items: rows, total: count, page, pageSize })
+}
+
+export async function deleteQuestion(req: Request, res: Response): Promise<void> {
+  const q = await Question.findByPk(Number(req.params.id))
+  if (!q) throw new NotFoundError('题目不存在')
+  await q.destroy()
+  res.json({ message: '题目已删除' })
+}
+
+export async function batchDeleteQuestions(req: Request, res: Response): Promise<void> {
+  const { ids } = req.body
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new BadRequestError('请提供要删除的题目ID列表')
+  }
+  const count = await Question.destroy({ where: { id: ids as number[] } })
+  res.json({ message: `已删除 ${count} 道题目`, count })
 }

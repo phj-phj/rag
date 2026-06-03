@@ -28,8 +28,16 @@ export function parseExtractionResponse(
   // 2. 尝试直接解析
   try {
     const arr = JSON.parse(text)
-    if (Array.isArray(arr)) return validateItems(arr)
-    if (arr?.questions && Array.isArray(arr.questions)) return validateItems(arr.questions)
+    if (Array.isArray(arr)) {
+      const validated = validateItems(arr)
+      console.log(`[question-utils] 直接JSON解析: ${validated.length}/${arr.length} 道有效题`)
+      return validated
+    }
+    if (arr?.questions && Array.isArray(arr.questions)) {
+      const validated = validateItems(arr.questions)
+      console.log(`[question-utils] JSON.questions解析: ${validated.length}/${arr.questions.length} 道`)
+      return validated
+    }
   } catch { /* continue */ }
 
   // 3. 提取 JSON 数组（贪婪匹配到最后一个 ]）
@@ -38,7 +46,8 @@ export function parseExtractionResponse(
     // 尝试用更宽松的模式 — 查找 [{ 到 }]
     const looseMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
     if (!looseMatch) {
-      console.warn('[question-utils] 未找到 JSON 数组:', text.slice(0, 200))
+      console.warn('[question-utils] 未找到 JSON 数组 (文本前200字):', text.slice(0, 200))
+      console.warn('[question-utils] 文本末200字:', text.slice(-200))
       return []
     }
     try {

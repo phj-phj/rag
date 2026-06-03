@@ -189,40 +189,50 @@ async function chunkDocument(docId: number, filePath: string, fileType: string):
 
     console.log(`[RAG] 文档 ${docId} 切块完成：${rows.length} 块`)
 
-    // 向量化 + 写入 LanceDB
-    const texts = rows.map(r => r.content)
-    const embeddings = await embedTexts(texts)
-    await indexChunks(
-      rows.map((r, i) => ({
-        id: r.id,
-        document_id: docId,
-        content: r.content,
-        embedding: embeddings[i],
-      }))
-    )
-
-    console.log(`[RAG] 文档 ${docId} 向量化+索引完成：${embeddings.length} 个向量`)
+    // 向量化 + 写入 LanceDB（不阻塞后续流程）
+    try {
+      const texts = rows.map(r => r.content)
+      const embeddings = await embedTexts(texts)
+      await indexChunks(
+        rows.map((r, i) => ({
+          id: r.id,
+          document_id: docId,
+          content: r.content,
+          embedding: embeddings[i],
+        }))
+      )
+      console.log(`[RAG] 文档 ${docId} 向量化+索引完成：${embeddings.length} 个向量`)
+    } catch (err) {
+      console.error(`[RAG] 文档 ${docId} 向量化失败（题目管道继续执行）:`, (err as Error).message)
+    }
 
     // ── 文档类型检测 + 题目提取/预生成 ──
+    const qStart = Date.now()
+    console.log(`[题目管道] ═══ 文档${docId} 开始题目处理 ═══`)
+    console.log(`[题目管道]   文本长度: ${text.length} 字符 | 估算token: ${estimateTokens(text)}`)
     try {
       const { detectDocumentType } = await import('../services/document-classifier.service')
       const { extractQuestionsFromDocument } = await import('../services/question-extraction.service')
       const { preGenerateQuestions } = await import('../services/question-generation.service')
 
       const docType = await detectDocumentType(text)
-      console.log(`[RAG] 文档 ${docId} 类型: ${docType}`)
+      console.log(`[题目管道]   分类结果: ${docType} (耗时${Date.now() - qStart}ms)`)
 
       if (docType === 'question_bank') {
-        await extractQuestionsFromDocument(docId, filePath, fileType)
+        const count = await extractQuestionsFromDocument(docId, filePath, fileType)
+        console.log(`[题目管道] ═══ 文档${docId} 题目提取完成: ${count}题 | 总耗时${Date.now() - qStart}ms ═══`)
       } else {
         const tokenCount = estimateTokens(text)
-        const targetCount = Math.floor(tokenCount / 100)
-        if (targetCount > 0) {
-          await preGenerateQuestions(docId, targetCount, filePath, fileType)
+        if (tokenCount >= 100) {
+          const count = await preGenerateQuestions(docId, filePath, fileType)
+          console.log(`[题目管道] ═══ 文档${docId} 题目预生成完成: ${count}题 | 总耗时${Date.now() - qStart}ms ═══`)
+        } else {
+          console.log(`[题目管道] ═══ 文档${docId} 文本太短(<100 tokens)，跳过预生成 | 耗时${Date.now() - qStart}ms ═══`)
         }
       }
     } catch (err) {
-      console.error(`[RAG] 题目处理失败 (文档${docId}):`, (err as Error).message)
+      console.error(`[题目管道] 处理失败 (文档${docId}):`, (err as Error).message)
+      console.error(`[题目管道] 错误堆栈:`, (err as Error).stack?.slice(0, 300))
     }
   } catch (err) {
     console.error(`[RAG] 文档 ${docId} 切块失败:`, (err as Error).message)

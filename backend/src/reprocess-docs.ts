@@ -46,10 +46,9 @@ async function reprocess() {
         console.log(`  ↳ 提取了 ${count} 道题`)
       } else {
         const tokenCount = estimateTokens(text)
-        const targetCount = Math.floor(tokenCount / 100)
-        if (targetCount > 0) {
-          const count = await preGenerateQuestions(doc.id, targetCount, filePath, fileType)
-          console.log(`  ↳ 预生成 ${count} 道题 (目标: ${targetCount})`)
+        if (tokenCount >= 100) {
+          const count = await preGenerateQuestions(doc.id, filePath, fileType)
+          console.log(`  ↳ 预生成 ${count} 道题`)
         }
       }
     } catch (err) {

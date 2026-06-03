@@ -34,28 +34,39 @@ const GENERATION_PROMPT = `你是 Papier 出题助手。根据以下参考资料
 
 export async function preGenerateQuestions(
   docId: number,
-  targetCount: number,
   filePath: string,
   fileType: string,
 ): Promise<number> {
+  const t0 = Date.now()
+  console.log(`[预生成] ── 文档${docId} 开始预生成题目 ──`)
+  console.log(`[预生成]   文件: ${filePath} | 类型: ${fileType}`)
+
   const fullPath = path.resolve(process.cwd(), filePath)
   const fullText = await getDocumentTextForChunking(fullPath, fileType)
-  if (!fullText || fullText.trim().length < 200) return 0
+  if (!fullText || fullText.trim().length < 200) {
+    console.log(`[预生成]   文本太短 (${fullText?.length || 0}字符)，跳过`)
+    return 0
+  }
 
+  console.log(`[预生成]   提取文本: ${fullText.length} 字符`)
   const chunks = splitForExtraction(fullText, 3000)
-  // 每个 chunk 多要 40%，确保最终总量足够
-  const perChunk = Math.max(1, Math.ceil((targetCount / chunks.length) * 1.4))
+  const perChunk = 5
+  console.log(`[预生成]   切分为 ${chunks.length} 块 | 每块目标: ${perChunk}题 | 预计总量: ${perChunk * chunks.length}题`)
   let totalGenerated = 0
 
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
+    const cStart = Date.now()
+    const chunk = chunks[i]
     try {
       const prompt = GENERATION_PROMPT.replace('{count}', String(perChunk)).replace(
         '{chunk}',
         chunk,
       )
+      console.log(`[预生成]   块${i + 1}/${chunks.length}: 发送LLM请求 (chunk长度=${chunk.length}字符)`)
       const response = await generationLlm.invoke(prompt)
       const text = typeof response.content === 'string' ? response.content : ''
       const questions = parseExtractionResponse(text)
+      console.log(`[预生成]   块${i + 1}/${chunks.length}: LLM返回${text.length}字符 → 解析出${questions.length}题 (耗时${Date.now() - cStart}ms)`)
 
       if (questions.length > 0) {
         await Question.bulkCreate(
@@ -70,12 +81,15 @@ export async function preGenerateQuestions(
           } as any)),
         )
         totalGenerated += questions.length
+        console.log(`[预生成]   块${i + 1}: 已写入数据库，累计${totalGenerated}题`)
+      } else {
+        console.warn(`[预生成]   块${i + 1}: 未解析出有效题目 (LLM原始响应前200字: ${text.slice(0, 200)})`)
       }
     } catch (err) {
-      console.error(`[pregeneration] chunk 处理失败:`, (err as Error).message)
+      console.error(`[预生成]   块${i + 1} 失败:`, (err as Error).message)
     }
   }
 
-  console.log(`[pregeneration] 文档 ${docId} 预生成完成: ${totalGenerated} 题`)
+  console.log(`[预生成] ── 文档${docId} 预生成完成: ${totalGenerated}题 | 总耗时${Date.now() - t0}ms ──`)
   return totalGenerated
 }

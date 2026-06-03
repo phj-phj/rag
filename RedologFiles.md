@@ -474,10 +474,8 @@
 ### AI 助手污染修复
 
 - **问题**：AI 助手聊天框返回内容被题库文档的原始 Q&A 文本污染，输出类似 `【面经4.9.pdf】 完成，data/methods 可用...` 的乱码
-- **根因**：题库文档（面经4.9.pdf、4.20金山一面.pdf 等）同时走了 RAG 分块和题目提取两条流程，RAG 分块将原始 Q&A 文本写入了 LanceDB，AI 助手检索到这些 chunk 后直接被 LLM 原样输出
-- **修复**（`document.controller.ts`）：`chunkDocument()` 重构为先检测文档类型再决定处理流程
-  - 题库文档（`question_bank`）：只执行题目提取，**跳过 RAG 分块**（不写 MySQL `Document_Chunks`、不写 LanceDB）
-  - 知识文档（`knowledge`）：正常 RAG 分块 + 向量化 + 预生成题目
+- **根因**：AI判断问题复杂度，复杂度低于一定的区间走简单路线，简单路线不做思考，直接输出切片文档
+- **修复**：取消简单路线和复杂路线之分
 - **清理存量污染**：编写 `clean-questionbank-chunks.ts`，删除 paper.pdf（49）、4.20金山一面.pdf（7）、面经4.9.pdf（207）共 **263 个污染 chunks**（MySQL + LanceDB 双向清理）
 - **文档类型检测增强**（`document-classifier.service.ts`）：新增题号密度快速判定，每 20 行中出现 1 个以上题号模式（`1.`、`（2）`、`一、`）直接判为题库文档，避免依赖 embedding API 的语义连贯性分析误判
 
@@ -548,3 +546,61 @@
 - 后端 API 健康检查 `/health` 正常，MySQL 连接正常
 - 训练 API `/api/training/generate` 正常返回题目
 - Questions 表统计：总计 252 题（提取 48 + 预生成 204）
+
+## 2026-06-03
+
+### 生产环境部署
+
+- **服务器**：阿里云 ECS 2核2G Ubuntu 22.04.5 LTS，公网 IP `47.95.112.34`
+- **环境**：Node.js v18 → v20.20.2（`@tailwindcss/oxide` 要求 ≥20）、MySQL 8.0、Nginx 1.18、pm2 5.x
+- **架构**：Nginx（前端静态 + `/api/*` 反向代理 + `/uploads/*` 静态文件）→ pm2（papier-api）→ Node.js + Express → MySQL + LanceDB
+- **部署步骤**：打包上传 → 解压 → `npm install` → 后端 `tsc` 编译 → `npm run seed` 建表 → 前端 `vite build` → Nginx 配置 → pm2 启动
+- **采坑记录**：
+  - Windows tar/gzip 兼容问题 → 改用 `Compress-Archive` 生成 zip
+  - zip 从 Windows 解压后 `node_modules/.bin/` 文件丢失可执行权限 → `chmod -R +x`
+  - Node 18 不满足 `@tailwindcss/oxide` 的 engine 要求 → 升级到 Node 20
+  - 前端构建 OOM（2G 内存跑 Vite + Tailwind 不够）→ `fallocate -l 2G /swapfile` 添加 swap
+  - npm 从 GitHub 下载 `sharp` 二进制超时 → 设置 npmmirror 淘宝镜像
+  - pm2 配置路径 `cwd: './backend'` 相对于执行目录 → 必须在 `/var/www/papier` 目录执行 `pm2 start`
+- **Nginx 修复**：`client_max_body_size 10M`（默认 1M，超过无法上传）、SSE 流式 `proxy_buffering off`
+- **验证通过**：登录、文档上传、AI 流式问答均正常
+
+### 题目管道调试日志增强
+
+- **目标**：题目提取/预生成过程可视化，每步骤耗时和结果一目了然
+- **修改文件**：
+  - `document.controller.ts` — `chunkDocument` 中题目管道入口：文档文本长度、token 估算、分类结果、提取/预生成题数、总耗时
+  - `question-generation.service.ts` — `preGenerateQuestions`：文件路径、文本长度、切块数、每块 LLM 请求耗时、解析题数、累计写入数据库题数
+  - `question-extraction.service.ts` — `extractQuestionsFromDocument`：同上结构，统一 `[提取]` 标签
+  - `question-utils.ts` — `parseExtractionResponse`：JSON 解析成功时打印有效题数/总数，失败时打印文本首尾各 200 字
+- **embedding 与题目管道解耦**：向量化/indexing 失败不再阻断下游题目生成（try-catch 包裹，失败日志继续执行）
+
+### 预生成密度调整
+
+- **原逻辑**：`targetCount = tokenCount / 100`（每 100 token 生成 1 题），再 `perChunk = Math.ceil((targetCount / chunks.length) * 1.4)`
+- **第一次简化**：`perChunk = 3`（硬编码），目标题数改为 `tokenCount / 500`
+- **第二次简化**：`perChunk = 5`，移除 `targetCount` 参数，入口只检查 `tokenCount >= 100`
+- **效果**：每块固定生成 5 道论述题，避开了之前 112 题/文档的过度生成
+- **同步修复**：`reprocess-docs.ts` 中相同调用点更新为新签名
+
+### 后台题库管理页面
+
+- **后端 API**（`admin.controller.ts` + `admin.routes.ts`）：
+  - `GET /api/admin/questions` — 分页列表（page/pageSize/keyword/source_type），仅返回 `extracted` 和 `ai_pregenerated` 类型
+  - `DELETE /api/admin/questions/:id` — 单题删除
+  - `POST /api/admin/questions/batch-delete` — 批量删除（`{ ids: number[] }`）
+- **前端页面**（`views/admin/QuestionBank.vue`）：
+  - 4 张统计卡片（题库总数/题库提取/AI 预生成/知识点数），数据来自 `GET /api/training/questions/stats`
+  - 搜索栏：关键词搜索 + 来源类型筛选（全部/题库提取/AI 预生成）
+  - 数据表格：题干+答案预览、来源标签（绿/蓝）、知识点、时间、删除按钮
+  - 多选功能：每行复选框 + 表头全选（支持半选态）+ 选中行高亮
+  - 批量删除：选中后标题右侧出现红色"删除已选 (N)"按钮 → 确认弹窗 → 调用批量删除 API
+  - 翻页清空选中，搜索清空选中
+- **路由**：`/admin/questions`（`requiresAuth` + `requiresAdmin`）
+- **导航**：AdminDashboard、DocManage、UserManage 三页均添加"题库管理"导航链接
+
+### Embedding API 修复
+
+- **问题**：智谱 embedding API（`embedding-2`，`open.bigmodel.cn`）返回 400，导致语义分块/分类器降级
+- **修复**：更换 API Key 为新的有效密钥（`7b7e84...`），embedding 恢复正常
+- **影响**：分类器语义判定恢复、向量检索恢复、语义分块恢复

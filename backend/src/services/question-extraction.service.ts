@@ -9,6 +9,7 @@ import {
   stripQuestionNumber,
 } from './question-utils'
 
+
 const extractionLlm = new ChatOpenAI({
   model: process.env.MIMO_TRAIN_MODEL || 'mimo-v2.5',
   temperature: 0.1,
@@ -38,19 +39,32 @@ export async function extractQuestionsFromDocument(
   filePath: string,
   fileType: string,
 ): Promise<number> {
+  const t0 = Date.now()
+  console.log(`[提取] ── 文档${docId} 开始提取题目 ──`)
+  console.log(`[提取]   文件: ${filePath} | 类型: ${fileType}`)
+
   const fullPath = path.resolve(process.cwd(), filePath)
   const fullText = await getDocumentTextForChunking(fullPath, fileType)
-  if (!fullText || fullText.trim().length < 50) return 0
+  if (!fullText || fullText.trim().length < 50) {
+    console.log(`[提取]   文本太短 (${fullText?.length || 0}字符)，跳过`)
+    return 0
+  }
 
+  console.log(`[提取]   提取文本: ${fullText.length} 字符`)
   const chunks = splitForExtraction(fullText, 4000)
+  console.log(`[提取]   切分为 ${chunks.length} 块`)
   let totalExtracted = 0
 
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
+    const cStart = Date.now()
+    const chunk = chunks[i]
     try {
       const prompt = EXTRACTION_PROMPT.replace('{chunk}', chunk)
+      console.log(`[提取]   块${i + 1}/${chunks.length}: 发送LLM请求 (chunk长度=${chunk.length}字符)`)
       const response = await extractionLlm.invoke(prompt)
       const text = typeof response.content === 'string' ? response.content : ''
       const questions = parseExtractionResponse(text)
+      console.log(`[提取]   块${i + 1}/${chunks.length}: LLM返回${text.length}字符 → 解析出${questions.length}题 (耗时${Date.now() - cStart}ms)`)
 
       if (questions.length > 0) {
         await Question.bulkCreate(
@@ -65,12 +79,15 @@ export async function extractQuestionsFromDocument(
           } as any)),
         )
         totalExtracted += questions.length
+        console.log(`[提取]   块${i + 1}: 已写入数据库，累计${totalExtracted}题`)
+      } else {
+        console.warn(`[提取]   块${i + 1}: 未解析出有效题目 (LLM原始响应前200字: ${text.slice(0, 200)})`)
       }
     } catch (err) {
-      console.error(`[extraction] chunk 处理失败:`, (err as Error).message)
+      console.error(`[提取]   块${i + 1} 失败:`, (err as Error).message)
     }
   }
 
-  console.log(`[extraction] 文档 ${docId} 提取完成: ${totalExtracted} 题`)
+  console.log(`[提取] ── 文档${docId} 提取完成: ${totalExtracted}题 | 总耗时${Date.now() - t0}ms ──`)
   return totalExtracted
 }

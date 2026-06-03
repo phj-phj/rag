@@ -31,6 +31,12 @@
               文档管理
             </router-link>
             <router-link
+              to="/admin/questions"
+              class="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              题库管理
+            </router-link>
+            <router-link
               to="/admin/users"
               class="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
             >

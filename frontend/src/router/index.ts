@@ -65,6 +65,12 @@ const router = createRouter({
       component: () => import('../views/admin/UserManage.vue'),
       meta: { requiresAuth: true, requiresAdmin: true },
     },
+    {
+      path: '/admin/questions',
+      name: 'AdminQuestions',
+      component: () => import('../views/admin/QuestionBank.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
   ],
 })
 

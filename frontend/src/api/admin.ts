@@ -39,3 +39,28 @@ export function getCategories() {
 export function getTags() {
   return client.get('/tags')
 }
+
+// 题库管理
+export interface QuestionItem {
+  id: number
+  stem: string
+  explanation: string
+  type: string
+  source_type: 'extracted' | 'ai_pregenerated'
+  source_document_id: number | null
+  knowledge_point: string | null
+  difficulty: number | null
+  created_at: string
+}
+
+export function getQuestions(params?: Record<string, unknown>) {
+  return client.get('/admin/questions', { params })
+}
+
+export function deleteQuestion(id: number) {
+  return client.delete(`/admin/questions/${id}`)
+}
+
+export function batchDeleteQuestions(ids: number[]) {
+  return client.post('/admin/questions/batch-delete', { ids })
+}
