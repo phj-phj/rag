@@ -230,6 +230,21 @@ import { getById, getContent } from '../api/document'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { DocItem } from '../types/api'
 
+// ── PDF Worker 调试 ──
+const WORKER_PATH = '/pdf.worker.mjs'
+function logPdf(msg: string, detail?: any) {
+  const ts = new Date().toISOString().slice(11, 23)
+  const prefix = `[PDF ${ts}]`
+  if (detail !== undefined) {
+    console.log(`${prefix} ${msg}`, detail)
+  } else {
+    console.log(`${prefix} ${msg}`)
+  }
+}
+logPdf('worker 路径:', WORKER_PATH)
+logPdf('当前 origin:', window.location.origin)
+logPdf('worker 完整 URL:', window.location.origin + WORKER_PATH)
+
 // pdfjs-dist 5.x 依赖 Chrome 专有的 Map.prototype.getOrInsertComputed
 if (!(Map.prototype as unknown as Record<string, unknown>).getOrInsertComputed) {
   ;(Map.prototype as unknown as Record<string, unknown>).getOrInsertComputed = function (key: unknown, compute: () => unknown) {
@@ -240,10 +255,7 @@ if (!(Map.prototype as unknown as Record<string, unknown>).getOrInsertComputed) 
   }
 }
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url,
-).toString()
+pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_PATH
 
 const props = defineProps<{
   docId: number
@@ -308,17 +320,23 @@ async function loadPdf(url: string) {
   if (!url) {
     pdfError.value = 'PDF 文件地址为空，无法加载'
     pdfLoading.value = false
+    logPdf('加载失败: URL 为空')
     return
   }
 
+  logPdf('开始加载 PDF:', url)
   try {
+    logPdf('调用 getDocument, workerSrc:', pdfjsLib.GlobalWorkerOptions.workerSrc)
     const loadingTask = pdfjsLib.getDocument(url)
     pdfDoc = await loadingTask.promise
+    logPdf('PDF 加载成功, 页数:', pdfDoc.numPages)
     pdfTotalPages.value = pdfDoc.numPages
     pdfLoading.value = false
   } catch (e: unknown) {
     const msg = `PDF 加载失败：${(e as Error).message || '未知错误'}`
     pdfError.value = msg
+    logPdf('加载异常:', msg)
+    console.error('[PDF] 完整错误:', e)
     pdfLoading.value = false
   }
 }
@@ -328,24 +346,26 @@ async function renderAllPages() {
   if (!pdfDoc || !container) return
 
   container.innerHTML = ''
-  const containerWidth = container.clientWidth || 700
-  const dpr = window.devicePixelRatio || 1
+  const displayWidth = (container.clientWidth || 700) - 32
+  const renderDpr = Math.max(window.devicePixelRatio || 1, 2) // 至少2x，1x屏幕也清晰
 
   for (let i = 1; i <= pdfTotalPages.value; i++) {
     try {
       const page = await pdfDoc.getPage(i)
       const viewport = page.getViewport({ scale: 1 })
-      const scale = pdfScale.value * Math.min(1, (containerWidth - 32) / viewport.width)
-      const scaledViewport = page.getViewport({ scale: scale * dpr })
+      const fitScale = Math.min(1, displayWidth / viewport.width) * pdfScale.value
+      const cssW = viewport.width * fitScale
+      const cssH = viewport.height * fitScale
+      const renderViewport = page.getViewport({ scale: fitScale * renderDpr })
 
       const wrapper = document.createElement('div')
       wrapper.className = 'pdf-page-wrapper'
 
       const canvas = document.createElement('canvas')
-      canvas.width = scaledViewport.width
-      canvas.height = scaledViewport.height
-      canvas.style.width = (scaledViewport.width / dpr) + 'px'
-      canvas.style.height = (scaledViewport.height / dpr) + 'px'
+      canvas.width = cssW * renderDpr
+      canvas.height = cssH * renderDpr
+      canvas.style.width = cssW + 'px'
+      canvas.style.height = cssH + 'px'
 
       const num = document.createElement('span')
       num.className = 'pdf-page-num'
@@ -357,7 +377,7 @@ async function renderAllPages() {
 
       const ctx = canvas.getContext('2d')
       if (!ctx) continue
-      await page.render({ canvas, viewport: scaledViewport, canvasContext: ctx }).promise
+      await page.render({ canvas, viewport: renderViewport, canvasContext: ctx }).promise
     } catch {
       // page render failed, continue to next
     }
