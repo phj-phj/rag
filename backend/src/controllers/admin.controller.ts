@@ -3,6 +3,7 @@ import { Op } from 'sequelize'
 import bcrypt from 'bcryptjs'
 import { Document, Category, Tag, User, Question } from '../models'
 import { deleteFile, getFileUrl } from '../services/file.service'
+import { deleteDocumentCascade } from '../services/document-cleanup.service'
 import { NotFoundError, BadRequestError } from '../utils/errors'
 
 function docToJson(doc: Document): Record<string, unknown> {
@@ -187,7 +188,7 @@ export async function deleteDocument(req: Request, res: Response): Promise<void>
     throw new NotFoundError('文档不存在')
   }
 
-  await deleteFile(doc.file_path)
+  await deleteDocumentCascade(doc.id, doc.file_path)
   await doc.destroy()
 
   res.json({ message: '文档已删除' })

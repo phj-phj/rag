@@ -1,6 +1,23 @@
 import path from 'path'
 import { ChatOpenAI } from '@langchain/openai'
 import { Question } from '../models'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('question-extraction')
+
+async function retry429<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  for (let i = 0; i < 5; i++) {
+    try { return await fn() }
+    catch (e: any) {
+      if (e?.status === 429 || e?.lc_error_code === 'MODEL_RATE_LIMIT') {
+        await new Promise(r => setTimeout(r, (i + 1) * 2000))
+        continue
+      }
+      throw e
+    }
+  }
+  throw new Error(`[${label}] 重试5次后仍失败`)
+}
 import { getDocumentTextForChunking } from './extraction.service'
 import {
   splitForExtraction,
@@ -11,13 +28,13 @@ import {
 
 
 const extractionLlm = new ChatOpenAI({
-  model: process.env.MIMO_TRAIN_MODEL || 'mimo-v2.5',
+  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-chat',
   temperature: 0.1,
   maxTokens: 4096,
   apiKey: process.env.MIMO_API_KEY || '',
   configuration: {
     baseURL:
-      process.env.MIMO_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/v1',
+      process.env.MIMO_BASE_URL || 'https://api.deepseek.com/v1',
   },
 })
 
@@ -40,19 +57,19 @@ export async function extractQuestionsFromDocument(
   fileType: string,
 ): Promise<number> {
   const t0 = Date.now()
-  console.log(`[提取] ── 文档${docId} 开始提取题目 ──`)
-  console.log(`[提取]   文件: ${filePath} | 类型: ${fileType}`)
+  logger.info(`[提取] ── 文档${docId} 开始提取题目 ──`)
+  logger.info(`[提取]   文件: ${filePath} | 类型: ${fileType}`)
 
   const fullPath = path.resolve(process.cwd(), filePath)
   const fullText = await getDocumentTextForChunking(fullPath, fileType)
   if (!fullText || fullText.trim().length < 50) {
-    console.log(`[提取]   文本太短 (${fullText?.length || 0}字符)，跳过`)
+    logger.info(`[提取]   文本太短 (${fullText?.length || 0}字符)，跳过`)
     return 0
   }
 
-  console.log(`[提取]   提取文本: ${fullText.length} 字符`)
+  logger.info(`[提取]   提取文本: ${fullText.length} 字符`)
   const chunks = splitForExtraction(fullText, 4000)
-  console.log(`[提取]   切分为 ${chunks.length} 块`)
+  logger.info(`[提取]   切分为 ${chunks.length} 块`)
   let totalExtracted = 0
 
   for (let i = 0; i < chunks.length; i++) {
@@ -60,11 +77,11 @@ export async function extractQuestionsFromDocument(
     const chunk = chunks[i]
     try {
       const prompt = EXTRACTION_PROMPT.replace('{chunk}', chunk)
-      console.log(`[提取]   块${i + 1}/${chunks.length}: 发送LLM请求 (chunk长度=${chunk.length}字符)`)
-      const response = await extractionLlm.invoke(prompt)
+      logger.info(`[提取]   块${i + 1}/${chunks.length}: 发送LLM请求 (chunk长度=${chunk.length}字符)`)
+      const response = await retry429(() => extractionLlm.invoke(prompt), 'extract')
       const text = typeof response.content === 'string' ? response.content : ''
       const questions = parseExtractionResponse(text)
-      console.log(`[提取]   块${i + 1}/${chunks.length}: LLM返回${text.length}字符 → 解析出${questions.length}题 (耗时${Date.now() - cStart}ms)`)
+      logger.info(`[提取]   块${i + 1}/${chunks.length}: LLM返回${text.length}字符 → 解析出${questions.length}题 (耗时${Date.now() - cStart}ms)`)
 
       if (questions.length > 0) {
         await Question.bulkCreate(
@@ -79,15 +96,15 @@ export async function extractQuestionsFromDocument(
           } as any)),
         )
         totalExtracted += questions.length
-        console.log(`[提取]   块${i + 1}: 已写入数据库，累计${totalExtracted}题`)
+        logger.info(`[提取]   块${i + 1}: 已写入数据库，累计${totalExtracted}题`)
       } else {
-        console.warn(`[提取]   块${i + 1}: 未解析出有效题目 (LLM原始响应前200字: ${text.slice(0, 200)})`)
+        logger.warn(`[提取]   块${i + 1}: 未解析出有效题目 (LLM原始响应前200字: ${text.slice(0, 200)})`)
       }
     } catch (err) {
-      console.error(`[提取]   块${i + 1} 失败:`, (err as Error).message)
+      logger.error(`[提取]   块${i + 1} 失败:`, (err as Error).message)
     }
   }
 
-  console.log(`[提取] ── 文档${docId} 提取完成: ${totalExtracted}题 | 总耗时${Date.now() - t0}ms ──`)
+  logger.info(`[提取] ── 文档${docId} 提取完成: ${totalExtracted}题 | 总耗时${Date.now() - t0}ms ──`)
   return totalExtracted
 }

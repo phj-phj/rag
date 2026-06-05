@@ -1,4 +1,7 @@
 import axios from 'axios'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('embedding')
 
 const BASE_URL = process.env.EMBED_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4'
 const API_KEY = process.env.EMBED_API_KEY || ''
@@ -26,7 +29,7 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   const embeddings: number[][] = res.data.data.map((d: any) => d.embedding)
   if (!dims && embeddings.length > 0) {
     dims = embeddings[0].length
-    console.log(`[embedding] ${MODEL} 就绪, 维度: ${dims}`)
+    logger.info(`[embedding] ${MODEL} 就绪, 维度: ${dims}`)
   }
 
   return embeddings

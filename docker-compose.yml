@@ -1,0 +1,56 @@
+services:
+  mysql:
+    image: mysql:8.0
+    command: --innodb-buffer-pool-size=128M --max-connections=50 --performance-schema=OFF
+    mem_limit: 400M
+    environment:
+      MYSQL_ROOT_PASSWORD: qweasdzxc
+      MYSQL_DATABASE: papier
+      MYSQL_USER: phj
+      MYSQL_PASSWORD: qweasdzxc
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    mem_limit: 384M
+    environment:
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: qweasdzxc
+      NODE_OPTIONS: --max-old-space-size=256
+    env_file:
+      - ./backend/.env
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads_data:/app/uploads
+      - lancedb_data:/app/lancedb_data
+      - ./backend/logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  uploads_data:
+  lancedb_data:

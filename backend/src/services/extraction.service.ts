@@ -1,6 +1,9 @@
 import { readFile } from 'fs/promises'
 import JSZip from 'jszip'
 import mammoth from 'mammoth'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('extraction')
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfParse = require('pdf-parse') as (
@@ -342,7 +345,7 @@ export async function getDocumentTextForChunking(
     // 深度清洗噪音后再用于切块
     return cleanForRag(text)
   } catch (err) {
-    console.error(`[chunking] 提取文本失败 (${fileType}):`, (err as Error).message)
+    logger.error(`[chunking] 提取文本失败 (${fileType}):`, (err as Error).message)
     return null
   }
 }

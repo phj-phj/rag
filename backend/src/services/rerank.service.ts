@@ -1,4 +1,7 @@
 import axios from 'axios'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('rerank')
 
 const BASE_URL = process.env.RERANK_BASE_URL || 'https://api.siliconflow.cn/v1'
 const API_KEY = process.env.RERANK_API_KEY || process.env.EMBED_API_KEY || ''
@@ -52,11 +55,11 @@ export async function rerank<T extends RerankInput>(
       }))
 
     const elapsed = Date.now() - start
-    console.log(`[rerank] ${elapsed}ms: ${candidates.length}条 → ${reranked.length}条`)
+    logger.info(`[rerank] ${elapsed}ms: ${candidates.length}条 → ${reranked.length}条`)
 
     return reranked
   } catch (err) {
-    console.warn('[rerank] 精排失败，退回粗排结果:', (err as any)?.message || err)
+    logger.warn('[rerank] 精排失败，退回粗排结果:', (err as any)?.message || err)
     return candidates.slice(0, topN)
   }
 }

@@ -1,8 +1,11 @@
 import sequelize from '../config/database'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('migration')
 
 async function migrate() {
   await sequelize.authenticate()
-  console.log('[migrate] 数据库已连接')
+  logger.info('[migrate] 数据库已连接')
 
   const query = sequelize.query.bind(sequelize)
 
@@ -26,7 +29,7 @@ async function migrate() {
       FULLTEXT INDEX idx_q_ft (stem)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
-  console.log('[migrate] Questions 表已就绪')
+  logger.info('[migrate] Questions 表已就绪')
 
   // 002: PracticeRecords
   await query(`
@@ -41,13 +44,13 @@ async function migrate() {
       UNIQUE INDEX idx_pr_user_question (user_id, question_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `)
-  console.log('[migrate] PracticeRecords 表已就绪')
+  logger.info('[migrate] PracticeRecords 表已就绪')
 
-  console.log('[migrate] 迁移完成')
+  logger.info('[migrate] 迁移完成')
   process.exit(0)
 }
 
 migrate().catch((err) => {
-  console.error('[migrate] 迁移失败:', err)
+  logger.error('[migrate] 迁移失败:', err)
   process.exit(1)
 })

@@ -1,4 +1,7 @@
 import { embedTexts } from './embedding.service'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('classifier')
 
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0
@@ -24,7 +27,7 @@ export async function detectDocumentType(
   const lines = fullText.split('\n').length
   // 每 20 行中出现 1 个以上题号 → 很可能题库
   if (lines > 0 && itemMatches.length > 0 && itemMatches.length >= Math.ceil(lines / 20)) {
-    console.log(`[classifier] 题号密度判定: ${itemMatches.length}个题号 / ${lines}行 → question_bank`)
+    logger.info(`[classifier] 题号密度判定: ${itemMatches.length}个题号 / ${lines}行 → question_bank`)
     return 'question_bank'
   }
 
@@ -43,13 +46,13 @@ export async function detectDocumentType(
       similarities.reduce((s, v) => s + (v - avg) ** 2, 0) / similarities.length
 
     if (variance > 0.08 || avg < 0.5) {
-      console.log(`[classifier] 语义判定: variance=${variance.toFixed(3)} avg=${avg.toFixed(3)} → question_bank`)
+      logger.info(`[classifier] 语义判定: variance=${variance.toFixed(3)} avg=${avg.toFixed(3)} → question_bank`)
       return 'question_bank'
     }
-    console.log(`[classifier] 语义判定: variance=${variance.toFixed(3)} avg=${avg.toFixed(3)} → knowledge`)
+    logger.info(`[classifier] 语义判定: variance=${variance.toFixed(3)} avg=${avg.toFixed(3)} → knowledge`)
     return 'knowledge'
   } catch {
-    console.warn('[classifier] embedding 不可用，默认按知识文档处理')
+    logger.warn('[classifier] embedding 不可用，默认按知识文档处理')
     return 'knowledge'
   }
 }

@@ -1,4 +1,7 @@
 import { embedTexts } from './embedding.service'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('chunking')
 
 // ── 类型 ──
 
@@ -26,19 +29,19 @@ export interface ChunkResult {
  */
 export async function splitIntoChunks(
   text: string,
-  maxSize: number = 250,
-  minSize: number = 80,
+  maxSize: number = 500,
+  minSize: number = 150,
 ): Promise<ChunkResult[]> {
   if (!text || !text.trim()) return []
 
-  console.log('[chunking] 开始语义分块，文本总长度:', text.length, '字, 上限:', maxSize, '字')
+  logger.info('[chunking] 开始语义分块，文本总长度:', text.length, '字, 上限:', maxSize, '字')
 
   // 尝试语义分块
   try {
     const chunks = await semanticChunking(text, maxSize, minSize)
     return addOverlap(chunks)
   } catch (err) {
-    console.log('[chunking] embedding 不可用，回退段落分块:', (err as Error).message)
+    logger.info('[chunking] embedding 不可用，回退段落分块:', (err as Error).message)
     const chunks = paragraphChunking(text, maxSize, minSize)
     return addOverlap(chunks)
   }
@@ -55,33 +58,33 @@ async function semanticChunking(
   minSize: number,
 ): Promise<ChunkResult[]> {
   const sentences = splitSentences(text)
-  console.log(`[chunking] 第1步：共 ${sentences.length} 个句子`)
+  logger.info(`[chunking] 第1步：共 ${sentences.length} 个句子`)
   if (sentences.length <= 1) {
     const c = makeChunk(sentences, 0, 'semantic')
-    console.log(`[chunking]   块${c.index} (${c.content.length}字, ${c.tokenCount}t, ${c.strategy})`)
+    logger.info(`[chunking]   块${c.index} (${c.content.length}字, ${c.tokenCount}t, ${c.strategy})`)
     return [c]
   }
 
   // 计算句子向量
   const sentenceTexts = sentences.map(s => s.text)
   const embeddings = await embedTexts(sentenceTexts)
-  console.log(`[chunking] 第2步：已计算 ${embeddings.length} 个句子的向量 (${embeddings[0]?.length || 0}维)`)
+  logger.info(`[chunking] 第2步：已计算 ${embeddings.length} 个句子的向量 (${embeddings[0]?.length || 0}维)`)
 
   // 相邻句子相似度
   const similarities: number[] = []
   for (let i = 0; i < embeddings.length - 1; i++) {
     similarities.push(cosineSimilarity(embeddings[i], embeddings[i + 1]))
   }
-  console.log('[chunking] 第3步：相邻句子相似度:', similarities.map(s => s.toFixed(3)).join(', '))
+  logger.info('[chunking] 第3步：相邻句子相似度:', similarities.map(s => s.toFixed(3)).join(', '))
 
   // 断点
   const breakpoints = findBreakpoints(similarities, 0.5)
-  console.log(`[chunking] 第4步：断点位置: [${breakpoints.join(', ')}]（共${breakpoints.length}个）`)
+  logger.info(`[chunking] 第4步：断点位置: [${breakpoints.join(', ')}]（共${breakpoints.length}个）`)
 
   // 合并 + 控制大小
   const chunks = mergeSemanticGroups(sentences, breakpoints, minSize, maxSize)
-  console.log(`[chunking] 第5步：最终生成 ${chunks.length} 个块`)
-  chunks.forEach(c => console.log(`[chunking]   块${c.index} (${c.content.length}字, ${c.tokenCount}t, ${c.strategy})`))
+  logger.info(`[chunking] 第5步：最终生成 ${chunks.length} 个块`)
+  chunks.forEach(c => logger.info(`[chunking]   块${c.index} (${c.content.length}字, ${c.tokenCount}t, ${c.strategy})`))
   return chunks
 }
 
@@ -95,8 +98,8 @@ function paragraphChunking(text: string, maxSize: number, minSize: number): Chun
   const segments = splitLongParagraphs(paragraphs, maxSize)
   const merged = mergeSegments(segments, maxSize, minSize)
 
-  console.log(`[chunking] 段落分块：${segments.length} 个段落片段 → ${merged.length} 个块`)
-  merged.forEach((content, i) => console.log(`[chunking]   块${i} (${content.length}字)`))
+  logger.info(`[chunking] 段落分块：${segments.length} 个段落片段 → ${merged.length} 个块`)
+  merged.forEach((content, i) => logger.info(`[chunking]   块${i} (${content.length}字)`))
   return merged.map((content, i) => ({
     index: i, content, tokenCount: estimateTokens(content),
     heading: detectHeading(content), positionStart: 0, positionEnd: content.length,
@@ -141,7 +144,7 @@ function mergeSegments(segments: string[], maxSize: number, minSize: number): st
 /**
  * 拆分超长句子（无标点的 URL 或代码块），按字符位置硬截断
  */
-function splitLongSentence(text: string, maxSize: number): string[] {
+export function splitLongSentence(text: string, maxSize: number): string[] {
   const result: string[] = []
   for (let i = 0; i < text.length; i += maxSize) {
     result.push(text.slice(i, i + maxSize))
@@ -213,14 +216,14 @@ function detectHeading(content: string): string | null {
   return m ? m[0].trim() : null
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
+export function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, normA = 0, normB = 0
   for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; normA += a[i] * a[i]; normB += b[i] * b[i] }
   const denom = Math.sqrt(normA) * Math.sqrt(normB)
   return denom === 0 ? 0 : dot / denom
 }
 
-function findBreakpoints(similarities: number[], threshold: number): number[] {
+export function findBreakpoints(similarities: number[], threshold: number): number[] {
   const bps: number[] = []
   for (let i = 0; i < similarities.length; i++) { if (similarities[i] < threshold) bps.push(i) }
   return bps
@@ -281,7 +284,7 @@ function makeChunk(sentences: SentenceMeta[], index: number, strategy: 'semantic
 /**
  * 重叠窗口：每个 chunk 尾部 20% 拼入下一个 chunk 头部，保留上下文边界
  */
-function addOverlap(chunks: ChunkResult[]): ChunkResult[] {
+export function addOverlap(chunks: ChunkResult[]): ChunkResult[] {
   if (chunks.length <= 1) return chunks
 
   const OVERLAP_RATIO = 0.2
@@ -299,7 +302,7 @@ function addOverlap(chunks: ChunkResult[]): ChunkResult[] {
     }
   }
 
-  console.log(`[chunking] 重叠窗口: ${OVERLAP_RATIO * 100}%`)
+  logger.info(`[chunking] 重叠窗口: ${OVERLAP_RATIO * 100}%`)
   return chunks
 }
 

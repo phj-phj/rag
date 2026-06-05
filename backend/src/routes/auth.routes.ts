@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
-import { login, register } from '../controllers/auth.controller'
+import { login, register, me, logout } from '../controllers/auth.controller'
+import { authenticate } from '../middlewares/auth'
 import { validate } from '../validators/validate'
 import { loginSchema, registerSchema } from '../validators/auth.schema'
 
@@ -20,7 +21,9 @@ const registerLimiter = rateLimit({
   message: { message: '注册过于频繁，请稍后再试' },
 })
 
+router.get('/me', authenticate, me)
 router.post('/login', validate(loginSchema), loginLimiter, login)
 router.post('/register', validate(registerSchema), registerLimiter, register)
+router.post('/logout', logout)
 
 export default router
