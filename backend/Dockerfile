@@ -20,10 +20,10 @@ RUN mkdir -p uploads logs
 
 EXPOSE 3000
 
-# 等待 MySQL 就绪 → 初始化数据库 → 启动
+# 等待 MySQL 就绪 → 首次初始化数据库 → 启动
 CMD sh -c "\
   echo '等待 MySQL 就绪...' && \
   while ! nc -z mysql 3306; do sleep 2; done && \
-  echo 'MySQL 就绪，初始化数据库...' && \
-  npm run seed && \
+  echo 'MySQL 就绪' && \
+  if node check-db.js; then npm run seed; fi && \
   node dist/app.js"

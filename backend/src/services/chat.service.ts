@@ -3,24 +3,44 @@ import { ChatPromptTemplate } from '@langchain/core/prompts'
 
 // ── 模型配置 ──
 
-const llm = new ChatOpenAI({
-  model: process.env.MIMO_MODEL || 'mimo-v2.5-pro',
-  temperature: 0.3,
-  maxTokens: 2048,
-  apiKey: process.env.MIMO_API_KEY || '',
-  configuration: {
-    baseURL: process.env.MIMO_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/v1',
-  },
-})
+async function retryLlm<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await fn()
+    } catch (e: any) {
+      if (e?.status === 429 || e?.lc_error_code === 'MODEL_RATE_LIMIT') {
+        const wait = (attempt + 1) * 2000
+        console.log(`[${label}] 429 限流，${wait}ms 后重试 (第${attempt + 1}次)`)
+        await new Promise(r => setTimeout(r, wait))
+        continue
+      }
+      throw e
+    }
+  }
+  throw new Error(`[${label}] 重试 5 次后仍失败`)
+}
 
-// 训练专用模型 — mimo-v2.5（非 pro，无推理延迟，TTFB < 3s）
+// AI 助手：默认 deepseek-chat（快），开启思考用 deepseek-reasoner
+function getChatLlm(enableThinking: boolean): ChatOpenAI {
+  return new ChatOpenAI({
+    model: enableThinking ? 'deepseek-reasoner' : (process.env.MIMO_MODEL || 'deepseek-chat'),
+    temperature: 0.3,
+    maxTokens: enableThinking ? 65536 : 4096,
+    apiKey: process.env.MIMO_API_KEY || '',
+    configuration: {
+      baseURL: process.env.MIMO_BASE_URL || 'https://api.deepseek.com/v1',
+    },
+  })
+}
+
+// 训练专用模型（出题、提取、预生成）
 const trainingLlm = new ChatOpenAI({
-  model: process.env.MIMO_TRAIN_MODEL || 'mimo-v2.5',
+  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-chat',
   temperature: 0.3,
   maxTokens: 4096,
   apiKey: process.env.MIMO_API_KEY || '',
   configuration: {
-    baseURL: process.env.MIMO_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/v1',
+    baseURL: process.env.MIMO_BASE_URL || 'https://api.deepseek.com/v1',
   },
 })
 
@@ -61,6 +81,7 @@ const promptTemplate = ChatPromptTemplate.fromMessages([
 export async function askDocument(
   question: string,
   chunks: ChunkInput[],
+  enableThinking = false,
 ): Promise<ChatResult> {
   const chunksText = chunks.map((c, i) =>
     `【${c.title}】\n${c.content}`
@@ -71,7 +92,8 @@ export async function askDocument(
     question,
   })
 
-  const res = await llm.invoke(messages)
+  const llm = getChatLlm(enableThinking)
+  const res = await retryLlm(() => llm.invoke(messages), 'chat')
   const content = typeof res.content === 'string' ? res.content : ''
 
   return {
@@ -85,6 +107,7 @@ export async function askDocument(
 export async function* askDocumentStream(
   question: string,
   chunks: ChunkInput[],
+  enableThinking = false,
 ): AsyncGenerator<string, string, unknown> {
   const chunksText = chunks.map((c, i) =>
     `【${c.title}】\n${c.content}`
@@ -95,7 +118,8 @@ export async function* askDocumentStream(
     question,
   })
 
-  const stream = await llm.stream(messages)
+  const llm = getChatLlm(enableThinking)
+  const stream = await retryLlm(() => llm.stream(messages), 'chat-stream')
 
   for await (const chunk of stream) {
     const content = typeof chunk.content === 'string' ? chunk.content : ''
@@ -126,7 +150,7 @@ export async function askDocumentForTraining(
     question,
   })
 
-  const res = await trainingLlm.invoke(messages)
+  const res = await retryLlm(() => trainingLlm.invoke(messages), 'training')
   return typeof res.content === 'string' ? res.content : ''
 }
 
@@ -173,7 +197,7 @@ export async function startTrainingStream(
   ])
 
   const messages = await prompt.formatMessages({ chunks: chunksText, question })
-  const llmStream = await trainingLlm.stream(messages)
+  const llmStream = await retryLlm(() => trainingLlm.stream(messages), 'training-stream')
 
   async function* streamGenerator(): AsyncGenerator<TrainingStreamEvent, void, unknown> {
     const llmStart = Date.now()

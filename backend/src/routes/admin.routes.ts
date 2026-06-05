@@ -18,10 +18,12 @@ import { updateDocSchema, updatePasswordSchema } from '../validators/admin.schem
 
 const router = Router()
 
+// stats 公开，首页统计卡片需要
+router.get('/stats', getStats)
+
 // 所有管理接口都需鉴权
 router.use(authenticate, requireAdmin)
 
-router.get('/stats', getStats)
 router.get('/documents', getDocuments)
 router.put('/documents/:id', validate(updateDocSchema), updateDocument)
 router.post('/documents/:id/replace', uploadSingle, replaceDocumentFile)

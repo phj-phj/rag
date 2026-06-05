@@ -8,14 +8,28 @@ import {
   extractKnowledgePoint,
 } from './question-utils'
 
+async function retry429<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  for (let i = 0; i < 5; i++) {
+    try { return await fn() }
+    catch (e: any) {
+      if (e?.status === 429 || e?.lc_error_code === 'MODEL_RATE_LIMIT') {
+        await new Promise(r => setTimeout(r, (i + 1) * 2000))
+        continue
+      }
+      throw e
+    }
+  }
+  throw new Error(`[${label}] 重试5次后仍失败`)
+}
+
 const generationLlm = new ChatOpenAI({
-  model: process.env.MIMO_TRAIN_MODEL || 'mimo-v2.5',
+  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-chat',
   temperature: 0.3,
   maxTokens: 4096,
   apiKey: process.env.MIMO_API_KEY || '',
   configuration: {
     baseURL:
-      process.env.MIMO_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/v1',
+      process.env.MIMO_BASE_URL || 'https://api.deepseek.com/v1',
   },
 })
 
@@ -63,7 +77,7 @@ export async function preGenerateQuestions(
         chunk,
       )
       console.log(`[预生成]   块${i + 1}/${chunks.length}: 发送LLM请求 (chunk长度=${chunk.length}字符)`)
-      const response = await generationLlm.invoke(prompt)
+      const response = await retry429(() => generationLlm.invoke(prompt), 'pregen')
       const text = typeof response.content === 'string' ? response.content : ''
       const questions = parseExtractionResponse(text)
       console.log(`[预生成]   块${i + 1}/${chunks.length}: LLM返回${text.length}字符 → 解析出${questions.length}题 (耗时${Date.now() - cStart}ms)`)

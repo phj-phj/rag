@@ -53,6 +53,12 @@
           </div>
 
           <div class="chat-input-area">
+            <button
+              class="thinking-toggle"
+              :class="{ active: thinking }"
+              :title="thinking ? '深度思考已开启' : '深度思考已关闭'"
+              @click="thinking = !thinking"
+            >🧠</button>
             <input
               v-model="question"
               class="chat-input"
@@ -146,6 +152,7 @@ const authStore = useAuthStore()
 const question = ref('')
 const messages = ref<ChatMessage[]>([])
 const loading = ref(false)
+const thinking = ref(false)
 const showLogout = ref(false)
 const showMobileNav = ref(false)
 const msgList = ref<HTMLElement | null>(null)
@@ -185,7 +192,7 @@ async function handleAsk() {
 
   try {
     console.log('[stream] 开始请求:', q)
-    const body = await askStream(q).catch((e: Error) => {
+    const body = await askStream(q, thinking.value).catch((e: Error) => {
       throw new Error(`连接失败: ${e.message}`)
     })
 
@@ -542,6 +549,21 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
   display: flex; align-items: center; gap: 10px;
   padding: 12px 0 20px;
   flex-shrink: 0;
+}
+.thinking-toggle {
+  width: 38px; height: 38px;
+  border: 1px solid #e8e2d7;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.thinking-toggle:hover { background: #faf7f2; }
+.thinking-toggle.active {
+  background: var(--amber, #d97706); border-color: var(--amber, #d97706);
 }
 .chat-input {
   flex: 1;

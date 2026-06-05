@@ -72,7 +72,7 @@ export async function ask(req: Request, res: Response): Promise<void> {
     }))
 
     const llmStart = Date.now()
-    const result = await askDocument(question, chunks)
+    const result = await askDocument(question, chunks, req.body.thinking === true)
     debugLLM(0, Date.now() - llmStart, 0)
     debugTiming()
 
@@ -147,7 +147,7 @@ export async function askStream(req: Request, res: Response): Promise<void> {
     res.flushHeaders()
 
     try {
-      const stream = askDocumentStream(question, chunks)
+      const stream = askDocumentStream(question, chunks, req.body.thinking === true)
 
       // 先发 docs
       res.write(`data: ${JSON.stringify({ type: 'docs', docs })}\n\n`)
