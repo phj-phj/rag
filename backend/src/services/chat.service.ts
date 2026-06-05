@@ -1,5 +1,8 @@
 import { ChatOpenAI } from '@langchain/openai'
 import { ChatPromptTemplate } from '@langchain/core/prompts'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('chat')
 
 // ── 模型配置 ──
 
@@ -10,7 +13,7 @@ async function retryLlm<T>(fn: () => Promise<T>, label: string): Promise<T> {
     } catch (e: any) {
       if (e?.status === 429 || e?.lc_error_code === 'MODEL_RATE_LIMIT') {
         const wait = (attempt + 1) * 2000
-        console.log(`[${label}] 429 限流，${wait}ms 后重试 (第${attempt + 1}次)`)
+        logger.info(`[${label}] 429 限流，${wait}ms 后重试 (第${attempt + 1}次)`)
         await new Promise(r => setTimeout(r, wait))
         continue
       }
@@ -44,7 +47,7 @@ const trainingLlm = new ChatOpenAI({
   },
 })
 
-console.log('[chat.service] trainingLlm 初始化: model=' + trainingLlm.model + ' maxTokens=' + trainingLlm.maxTokens)
+logger.info('[chat.service] trainingLlm 初始化: model=' + trainingLlm.model + ' maxTokens=' + trainingLlm.maxTokens)
 
 // ── 类型 ──
 
@@ -220,8 +223,8 @@ export async function startTrainingStream(
     }
 
     const llmMs = Date.now() - llmStart
-    console.log(`[train] stream: ${totalChunks}chunk ${collected.length}字 TTFB=${ttfbMs}ms 总=${llmMs}ms`)
-    console.log(`[train] 原始输出: ${collected.slice(0, 300).replace(/\n/g, '\\n')}`)
+    logger.info(`[train] stream: ${totalChunks}chunk ${collected.length}字 TTFB=${ttfbMs}ms 总=${llmMs}ms`)
+    logger.info(`[train] 原始输出: ${collected.slice(0, 300).replace(/\n/g, '\\n')}`)
     yield { type: 'llmDone' as const, ttfbMs, llmMs, totalChunks }
   }
 
@@ -232,7 +235,7 @@ export async function startTrainingStream(
  * 增量 JSON 解析器 — 追踪花括号深度，逐 token 提取完整对象
  * 专门处理 LLM 流式输出的 JSON 数组: [{"q":"...", "a":"..."}, ...]
  */
-class IncrementalJsonParser {
+export class IncrementalJsonParser {
   private buf = ''
   private depth = 0
   private inString = false

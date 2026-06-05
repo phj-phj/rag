@@ -1,6 +1,9 @@
 import path from 'path'
 import { ChatOpenAI } from '@langchain/openai'
 import { Question } from '../models'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('question-generation')
 import { getDocumentTextForChunking } from './extraction.service'
 import {
   splitForExtraction,
@@ -52,20 +55,20 @@ export async function preGenerateQuestions(
   fileType: string,
 ): Promise<number> {
   const t0 = Date.now()
-  console.log(`[预生成] ── 文档${docId} 开始预生成题目 ──`)
-  console.log(`[预生成]   文件: ${filePath} | 类型: ${fileType}`)
+  logger.info(`[预生成] ── 文档${docId} 开始预生成题目 ──`)
+  logger.info(`[预生成]   文件: ${filePath} | 类型: ${fileType}`)
 
   const fullPath = path.resolve(process.cwd(), filePath)
   const fullText = await getDocumentTextForChunking(fullPath, fileType)
   if (!fullText || fullText.trim().length < 200) {
-    console.log(`[预生成]   文本太短 (${fullText?.length || 0}字符)，跳过`)
+    logger.info(`[预生成]   文本太短 (${fullText?.length || 0}字符)，跳过`)
     return 0
   }
 
-  console.log(`[预生成]   提取文本: ${fullText.length} 字符`)
+  logger.info(`[预生成]   提取文本: ${fullText.length} 字符`)
   const chunks = splitForExtraction(fullText, 3000)
-  const perChunk = 5
-  console.log(`[预生成]   切分为 ${chunks.length} 块 | 每块目标: ${perChunk}题 | 预计总量: ${perChunk * chunks.length}题`)
+  const perChunk = 3
+  logger.info(`[预生成]   切分为 ${chunks.length} 块 | 每块目标: ${perChunk}题 | 预计总量: ${perChunk * chunks.length}题`)
   let totalGenerated = 0
 
   for (let i = 0; i < chunks.length; i++) {
@@ -76,11 +79,11 @@ export async function preGenerateQuestions(
         '{chunk}',
         chunk,
       )
-      console.log(`[预生成]   块${i + 1}/${chunks.length}: 发送LLM请求 (chunk长度=${chunk.length}字符)`)
+      logger.info(`[预生成]   块${i + 1}/${chunks.length}: 发送LLM请求 (chunk长度=${chunk.length}字符)`)
       const response = await retry429(() => generationLlm.invoke(prompt), 'pregen')
       const text = typeof response.content === 'string' ? response.content : ''
       const questions = parseExtractionResponse(text)
-      console.log(`[预生成]   块${i + 1}/${chunks.length}: LLM返回${text.length}字符 → 解析出${questions.length}题 (耗时${Date.now() - cStart}ms)`)
+      logger.info(`[预生成]   块${i + 1}/${chunks.length}: LLM返回${text.length}字符 → 解析出${questions.length}题 (耗时${Date.now() - cStart}ms)`)
 
       if (questions.length > 0) {
         await Question.bulkCreate(
@@ -95,15 +98,15 @@ export async function preGenerateQuestions(
           } as any)),
         )
         totalGenerated += questions.length
-        console.log(`[预生成]   块${i + 1}: 已写入数据库，累计${totalGenerated}题`)
+        logger.info(`[预生成]   块${i + 1}: 已写入数据库，累计${totalGenerated}题`)
       } else {
-        console.warn(`[预生成]   块${i + 1}: 未解析出有效题目 (LLM原始响应前200字: ${text.slice(0, 200)})`)
+        logger.warn(`[预生成]   块${i + 1}: 未解析出有效题目 (LLM原始响应前200字: ${text.slice(0, 200)})`)
       }
     } catch (err) {
-      console.error(`[预生成]   块${i + 1} 失败:`, (err as Error).message)
+      logger.error(`[预生成]   块${i + 1} 失败:`, (err as Error).message)
     }
   }
 
-  console.log(`[预生成] ── 文档${docId} 预生成完成: ${totalGenerated}题 | 总耗时${Date.now() - t0}ms ──`)
+  logger.info(`[预生成] ── 文档${docId} 预生成完成: ${totalGenerated}题 | 总耗时${Date.now() - t0}ms ──`)
   return totalGenerated
 }

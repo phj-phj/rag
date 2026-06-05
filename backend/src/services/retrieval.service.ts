@@ -4,6 +4,9 @@ import { embedQuery } from './embedding.service'
 import { rerank } from './rerank.service'
 import Document from '../models/Document'
 import { debugInfo } from '../utils/debug'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('retrieval')
 
 const DB_PATH = path.resolve(__dirname, '../../lancedb_data')
 
@@ -12,7 +15,7 @@ let db: lancedb.Connection | null = null
 async function getDB(): Promise<lancedb.Connection> {
   if (!db) {
     db = await lancedb.connect(DB_PATH)
-    console.log('[retrieval] LanceDB 已连接:', DB_PATH)
+    logger.info('[retrieval] LanceDB 已连接:', DB_PATH)
   }
   return db
 }
@@ -27,14 +30,14 @@ export async function ensureIndexes(): Promise<void> {
   const conn = await getDB()
   const names = await conn.tableNames()
   if (!names.includes('chunks')) {
-    console.log('[retrieval] chunks 表不存在，跳过索引创建')
+    logger.info('[retrieval] chunks 表不存在，跳过索引创建')
     return
   }
 
   const table = await conn.openTable('chunks')
   const rowCount = Number(await table.countRows())
   if (rowCount === 0) {
-    console.log('[retrieval] chunks 表为空，跳过索引创建')
+    logger.info('[retrieval] chunks 表为空，跳过索引创建')
     return
   }
 
@@ -45,10 +48,10 @@ export async function ensureIndexes(): Promise<void> {
     await table.createIndex('document_id', {
       config: lancedb.Index.btree(),
     })
-    console.log('[retrieval] BTREE 标量索引已创建 (document_id)')
+    logger.info('[retrieval] BTREE 标量索引已创建 (document_id)')
   } catch (e: any) {
     if (e.message?.includes('already exists')) {
-      console.log('[retrieval] 标量索引已存在，跳过')
+      logger.info('[retrieval] 标量索引已存在，跳过')
     } else {
       throw e
     }
@@ -59,10 +62,10 @@ export async function ensureIndexes(): Promise<void> {
     await table.createIndex('content', {
       config: lancedb.Index.fts(),
     })
-    console.log('[retrieval] FTS 全文索引已创建 (content)')
+    logger.info('[retrieval] FTS 全文索引已创建 (content)')
   } catch (e: any) {
     if (e.message?.includes('already exists')) {
-      console.log('[retrieval] FTS 索引已存在，跳过')
+      logger.info('[retrieval] FTS 索引已存在，跳过')
     } else {
       throw e
     }
@@ -80,9 +83,9 @@ export async function compactTable(): Promise<void> {
   const table = await conn.openTable('chunks')
   try {
     await table.optimize()
-    console.log('[retrieval] 表已 compact')
+    logger.info('[retrieval] 表已 compact')
   } catch (e: any) {
-    console.log('[retrieval] compact 跳过:', e.message)
+    logger.info('[retrieval] compact 跳过:', e.message)
   }
 }
 
@@ -109,7 +112,7 @@ export async function indexChunks(
     await conn.createTable('chunks', data, { existOk: true })
   }
 
-  console.log(`[retrieval] 已索引 ${rows.length} 个 chunk`)
+  logger.info(`[retrieval] 已索引 ${rows.length} 个 chunk`)
 }
 
 // ── 检索 ──
@@ -126,7 +129,7 @@ export async function retrieve(question: string, topK: number = 5): Promise<Retr
   const conn = await getDB()
   const names = await conn.tableNames()
   if (!names.includes('chunks')) {
-    console.log('[retrieval] chunks 表不存在，无数据可检索')
+    logger.info('[retrieval] chunks 表不存在，无数据可检索')
     return []
   }
 
@@ -143,7 +146,7 @@ export async function retrieve(question: string, topK: number = 5): Promise<Retr
     (table.search(queryVec) as any).distanceType('cosine').limit(topK * CANDIDATE_FACTOR).toArray(),
     // 全文检索（BM25）
     (table.search(question, 'fts' as any, 'content' as any) as any).limit(topK * CANDIDATE_FACTOR).toArray().catch((err: any) => {
-      console.warn('[retrieval] FTS 检索失败，仅用向量:', err.message)
+      logger.warn('[retrieval] FTS 检索失败，仅用向量:', err.message)
       return []
     }),
   ])
@@ -177,25 +180,25 @@ export async function retrieve(question: string, topK: number = 5): Promise<Retr
 
   // FTS 结果日志
   if (ftsChunks.length > 0) {
-    console.log(`[retrieval] FTS 命中:`)
+    logger.info(`[retrieval] FTS 命中:`)
     ftsChunks.slice(0, 5).forEach((c: any, i: number) => {
-      console.log(`[retrieval]   ${i + 1}. [${c.documentTitle}] ${c.content.slice(0, 60).replace(/\n/g, ' ')}...`)
+      logger.info(`[retrieval]   ${i + 1}. [${c.documentTitle}] ${c.content.slice(0, 60).replace(/\n/g, ' ')}...`)
     })
   }
 
   // ── RRF 融合（FTS 与向量同权）──
   const merged = rrfMerge(vecChunks, ftsChunks, topK * CANDIDATE_FACTOR)
-  console.log(`[retrieval] 双路粗召 ${vecChunks.length}+${ftsChunks.length} → RRF融合 ${merged.length}`)
+  logger.info(`[retrieval] 双路粗召 ${vecChunks.length}+${ftsChunks.length} → RRF融合 ${merged.length}`)
 
   // ── Rerank 精排（粗召结果重新打分排序）──
   const reranked = await rerank(question, merged, topK * 2)
-  console.log(`[retrieval] Rerank精排: ${merged.length}条 → ${reranked.length}条`)
+  logger.info(`[retrieval] Rerank精排: ${merged.length}条 → ${reranked.length}条`)
 
   // MMR 多样性选择
   const selected = mmrSelect(reranked, topK, 0.7)
-  console.log(`[retrieval] MMR 精选结果:`)
+  logger.info(`[retrieval] MMR 精选结果:`)
   selected.forEach((c: RetrievedChunk, i: number) => {
-    console.log(`[retrieval]   ${i + 1}. [${c.documentTitle}] score=${c.score.toFixed(3)}`)
+    logger.info(`[retrieval]   ${i + 1}. [${c.documentTitle}] score=${c.score.toFixed(3)}`)
   })
 
   return selected
@@ -207,7 +210,7 @@ export async function retrieve(question: string, topK: number = 5): Promise<Retr
  * Reciprocal Rank Fusion：合并向量和 FTS 两路结果
  * RRF_score = Σ 1 / (k + rank_in_path)
  */
-function rrfMerge(
+export function rrfMerge(
   vec: (RetrievedChunk & { _rank?: number })[],
   fts: (RetrievedChunk & { _rank?: number })[],
   topK: number,
@@ -235,7 +238,7 @@ function rrfMerge(
 
 // ── MMR 多样性去重 ──
 
-function mmrSelect(candidates: RetrievedChunk[], topK: number, lambda: number): RetrievedChunk[] {
+export function mmrSelect(candidates: RetrievedChunk[], topK: number, lambda: number): RetrievedChunk[] {
   if (candidates.length <= topK) return candidates
 
   const selected: RetrievedChunk[] = []
@@ -278,7 +281,7 @@ function mmrSelect(candidates: RetrievedChunk[], topK: number, lambda: number): 
 /**
  * 字符级 Jaccard 重叠度（快速近似文本相似度）
  */
-function jaccardOverlap(a: string, b: string): number {
+export function jaccardOverlap(a: string, b: string): number {
   const setA = new Set(a.slice(0, 200))
   const setB = new Set(b.slice(0, 200))
   let intersection = 0
@@ -298,5 +301,5 @@ export async function deleteDocumentChunks(documentId: number): Promise<void> {
 
   const table = await conn.openTable('chunks')
   await table.delete(`document_id = ${documentId}`)
-  console.log(`[retrieval] 已删除文档 ${documentId} 的 chunk 向量`)
+  logger.info(`[retrieval] 已删除文档 ${documentId} 的 chunk 向量`)
 }

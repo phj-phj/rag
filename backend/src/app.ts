@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import cookieParser from 'cookie-parser'
 import dotenv from 'dotenv'
 import path from 'path'
 import sequelize from './config/database'
@@ -15,6 +16,9 @@ import trainingRoutes from './routes/training.routes'
 import { compactTable, ensureIndexes } from './services/retrieval.service'
 import { requestId } from './middlewares/requestId'
 import { errorHandler } from './middlewares/errorHandler'
+import { logger } from './utils/logger'
+import swaggerUi from 'swagger-ui-express'
+import swaggerSpec from './config/swagger'
 
 dotenv.config()
 
@@ -30,7 +34,9 @@ app.use(cors({
 }))
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+app.use(cookieParser())
 
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec))
 app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')))
 
 app.use('/api/auth', authRoutes)
@@ -57,32 +63,34 @@ app.get('/', (_req, res) => {
 
 app.use(errorHandler)
 
-sequelize.authenticate()
-  .then(() => {
-    console.log('数据库连接成功')
-    return sequelize.sync()
-  })
-  .then(() => {
-    console.log('数据库表同步完成')
-    // 启动时顺序建立索引 + 清理（避免并发冲突）
-    ensureIndexes()
-      .then(() => new Promise(r => setTimeout(r, 500)))
-      .then(() => compactTable())
-      .catch(e => console.warn('LanceDB 初始化跳过:', (e as Error).message))
-      .finally(() => {
-        const server = app.listen(PORT, () => {
-          console.log(`服务器运行在 http://localhost:${PORT}`)
+if (process.env.NODE_ENV !== 'test') {
+  sequelize.authenticate()
+    .then(() => {
+      logger.info('数据库连接成功')
+      return sequelize.sync()
+    })
+    .then(() => {
+      logger.info('数据库表同步完成')
+      // 启动时顺序建立索引 + 清理（避免并发冲突）
+      ensureIndexes()
+        .then(() => new Promise(r => setTimeout(r, 500)))
+        .then(() => compactTable())
+        .catch(e => logger.warn('LanceDB 初始化跳过:', (e as Error).message))
+        .finally(() => {
+          const server = app.listen(PORT, () => {
+            logger.info(`服务器运行在 http://localhost:${PORT}`)
+          })
+          server.on('error', (err: NodeJS.ErrnoException) => {
+            if (err.code === 'EADDRINUSE') {
+              logger.error(`端口 ${PORT} 被占用，请先关闭占用进程`)
+              process.exit(1)
+            }
+          })
         })
-        server.on('error', (err: NodeJS.ErrnoException) => {
-          if (err.code === 'EADDRINUSE') {
-            console.error(`端口 ${PORT} 被占用，请先关闭占用进程`)
-            process.exit(1)
-          }
-        })
-      })
-  })
-  .catch((err) => {
-    console.error('启动失败:', err)
-  })
+    })
+    .catch((err) => {
+      logger.error('启动失败:', err)
+    })
+}
 
 export default app

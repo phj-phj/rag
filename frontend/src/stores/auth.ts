@@ -10,35 +10,36 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!token.value)
   const isAdmin = computed(() => user.value?.role === 'admin')
 
-  function initFromStorage() {
-    const savedToken = localStorage.getItem('token')
-    const savedUser = localStorage.getItem('user')
-    if (savedToken) {
-      token.value = savedToken
-    }
-    if (savedUser) {
-      try {
-        user.value = JSON.parse(savedUser)
-      } catch {
-        user.value = null
+  async function initAuth() {
+    try {
+      const res = await fetch('/api/auth/me', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        user.value = data.user
+        token.value = 'cookie' // 标记已登录，实际 token 在 httpOnly cookie
       }
+    } catch {
+      token.value = null
+      user.value = null
     }
   }
 
   async function login(username: string, password: string) {
     const { data } = await loginApi(username, password)
-    token.value = data.token
+    token.value = 'cookie'
     user.value = data.user
-    localStorage.setItem('token', data.token)
-    localStorage.setItem('user', JSON.stringify(data.user))
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch { /* cookie 清除即使 API 失败也无妨 */ }
     token.value = null
     user.value = null
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
   }
 
-  return { token, user, isAuthenticated, isAdmin, initFromStorage, login, logout }
+  return { token, user, isAuthenticated, isAdmin, initAuth, login, logout }
 })

@@ -1,13 +1,16 @@
 import { DocumentChunk } from './models'
 import { embedTexts } from './services/embedding.service'
 import { indexChunks } from './services/retrieval.service'
+import { createModuleLogger } from './utils/logger'
+
+const logger = createModuleLogger('reindex')
 
 async function reindex(): Promise<void> {
   const chunks = await DocumentChunk.findAll()
-  console.log(`[reindex] MySQL 共 ${chunks.length} 个 chunk`)
+  logger.info(`[reindex] MySQL 共 ${chunks.length} 个 chunk`)
 
   if (chunks.length === 0) {
-    console.log('[reindex] 无数据，退出')
+    logger.info('[reindex] 无数据，退出')
     process.exit(0)
   }
 
@@ -23,11 +26,11 @@ async function reindex(): Promise<void> {
         embedding: embeddings[j],
       }))
     )
-    console.log(`[reindex] 批次 ${Math.floor(i / BATCH) + 1}: ${batch.length} 个 chunk`)
+    logger.info(`[reindex] 批次 ${Math.floor(i / BATCH) + 1}: ${batch.length} 个 chunk`)
   }
 
-  console.log(`[reindex] 完成：${chunks.length} 个向量已索引入 LanceDB`)
+  logger.info(`[reindex] 完成：${chunks.length} 个向量已索引入 LanceDB`)
   process.exit(0)
 }
 
-reindex().catch(e => { console.error(e); process.exit(1) })
+reindex().catch(e => { logger.error(e); process.exit(1) })

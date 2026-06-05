@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.git/
+logs/
+*.zip
+*.tar.gz
+*.md
+.DS_Store
+.env
+.env.example
+.env.test
+src/__tests__/
+vitest.config.ts

@@ -1,4 +1,7 @@
 import axios from 'axios'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('rewrite')
 
 const BASE_URL = process.env.MIMO_BASE_URL || 'https://api.deepseek.com/v1'
 const API_KEY = process.env.MIMO_API_KEY || ''
@@ -33,16 +36,16 @@ export async function rewriteQuery(question: string): Promise<string> {
 
       const rewritten = res.data?.choices?.[0]?.message?.content?.trim() || ''
       const elapsed = Date.now() - start
-      console.log(`[rewrite] ${elapsed}ms: "${question.slice(0, 40)}..." → "${rewritten}"`)
+      logger.info(`[rewrite] ${elapsed}ms: "${question.slice(0, 40)}..." → "${rewritten}"`)
       return rewritten || question
     } catch (err) {
       const status = (err as any)?.response?.status
       if (status === 429 && attempt < 2) {
-        console.log(`[rewrite] 429 限流，${(attempt + 1) * 2000}ms 后重试`)
+        logger.info(`[rewrite] 429 限流，${(attempt + 1) * 2000}ms 后重试`)
         await new Promise(r => setTimeout(r, (attempt + 1) * 2000))
         continue
       }
-      console.warn('[rewrite] 改写失败，使用原问题:', (err as any)?.message || err)
+      logger.warn('[rewrite] 改写失败，使用原问题:', (err as any)?.message || err)
       return question
     }
   }

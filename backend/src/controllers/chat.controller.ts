@@ -5,6 +5,9 @@ import { rewriteQuery } from '../services/rewrite.service'
 import { routeQuery } from '../services/router.service'
 import { debugPhase, debugInfo, debugRetrieval, debugConfidence, debugLLM, debugTiming, debugRoute } from '../utils/debug'
 import { BadRequestError } from '../utils/errors'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('chat')
 
 const TRAINING_PROMPT = `你是 Papier 出题助手。根据以下参考资料生成题目。
 
@@ -78,7 +81,7 @@ export async function ask(req: Request, res: Response): Promise<void> {
 
     res.json({ answer: result.answer, model: result.model, docs })
   } catch (err) {
-    console.error('[chat] AI 问答失败:', err)
+    logger.error('[chat] AI 问答失败:', err)
     res.status(500).json({ message: `AI 问答失败: ${(err as Error).message}` })
   }
 }
@@ -166,12 +169,12 @@ export async function askStream(req: Request, res: Response): Promise<void> {
       res.write('data: [DONE]\n\n')
       res.end()
     } catch (err) {
-      console.error('[chat-stream] 流式生成失败:', err)
+      logger.error('[chat-stream] 流式生成失败:', err)
       res.write(`data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`)
       res.end()
     }
   } catch (err) {
-    console.error('[chat-stream] 检索失败:', err)
+    logger.error('[chat-stream] 检索失败:', err)
     res.status(500).json({ message: `检索失败: ${(err as Error).message}` })
     return
   }
@@ -183,7 +186,7 @@ export async function askStream(req: Request, res: Response): Promise<void> {
 export async function train(req: Request, res: Response): Promise<void> {
   const { question } = req.body
 
-  console.log(`[train] 收到出题需求，长度: ${question.length} 字`)
+  logger.info(`[train] 收到出题需求，长度: ${question.length} 字`)
 
   try {
     // 1. 检索相关片段
@@ -205,13 +208,13 @@ export async function train(req: Request, res: Response): Promise<void> {
     const answer = await askDocumentForTraining(question, chunks, TRAINING_PROMPT)
 
     // 4. 解析 JSON
-    console.log('[train] LLM 返回长度:', answer.length, '字，结尾30字:', answer.slice(-30))
+    logger.info('[train] LLM 返回长度:', answer.length, '字，结尾30字:', answer.slice(-30))
     const questions = parseQuestions(answer)
-    console.log(`[train] 生成 ${questions.length} 道题目`)
+    logger.info(`[train] 生成 ${questions.length} 道题目`)
 
     res.json({ questions, docs })
   } catch (err) {
-    console.error('[train] 出题失败:', err)
+    logger.error('[train] 出题失败:', err)
     res.status(500).json({ message: `出题失败: ${(err as Error).message}` })
   }
 }
@@ -226,7 +229,7 @@ export async function trainStream(req: Request, res: Response): Promise<void> {
   const { question } = req.body
 
   const reqStart = Date.now()
-  console.log(`[train-stream] 收到出题需求，长度: ${question.length} 字`)
+  logger.info(`[train-stream] 收到出题需求，长度: ${question.length} 字`)
 
   // 检索
   const retrievalStart = Date.now()
@@ -274,7 +277,7 @@ export async function trainStream(req: Request, res: Response): Promise<void> {
       if (event.type === 'question') {
         total++
         const elapsedMs = Date.now() - reqStart
-        console.log(`[train-stream] 题目${total} (${elapsedMs}ms):`, JSON.stringify(event.question).slice(0, 80))
+        logger.info(`[train-stream] 题目${total} (${elapsedMs}ms):`, JSON.stringify(event.question).slice(0, 80))
         res.write(`data: ${JSON.stringify({ type: 'question', question: event.question, index: total - 1, elapsedMs })}\n\n`)
       } else if (event.type === 'llmDone') {
         res.write(`data: ${JSON.stringify({
@@ -287,11 +290,11 @@ export async function trainStream(req: Request, res: Response): Promise<void> {
       }
     }
 
-    console.log(`[train-stream] 生成 ${total} 道题目`)
+    logger.info(`[train-stream] 生成 ${total} 道题目`)
     res.write(`data: ${JSON.stringify({ type: 'done', total })}\n\n`)
     res.end()
   } catch (err) {
-    console.error('[train-stream] 流式生成失败:', err)
+    logger.error('[train-stream] 流式生成失败:', err)
     res.write(`data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`)
     res.end()
   }
@@ -311,6 +314,6 @@ function parseQuestions(raw: string): Array<{ q: string; a: string }> {
       try { return JSON.parse(match[0]) } catch { /* fall through */ }
     }
   }
-  console.warn('[train] 无法解析 LLM 返回的题目 JSON')
+  logger.warn('[train] 无法解析 LLM 返回的题目 JSON')
   return []
 }

@@ -1,5 +1,10 @@
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('question-utils')
+
 // 大窗口切分：尽量在换行处切断，避免截断Q&A对
 export function splitForExtraction(text: string, maxLen: number): string[] {
+  if (maxLen <= 0 || !text) return []
   const parts: string[] = []
   let remaining = text
   while (remaining.length > maxLen) {
@@ -30,12 +35,12 @@ export function parseExtractionResponse(
     const arr = JSON.parse(text)
     if (Array.isArray(arr)) {
       const validated = validateItems(arr)
-      console.log(`[question-utils] 直接JSON解析: ${validated.length}/${arr.length} 道有效题`)
+      logger.info(`[question-utils] 直接JSON解析: ${validated.length}/${arr.length} 道有效题`)
       return validated
     }
     if (arr?.questions && Array.isArray(arr.questions)) {
       const validated = validateItems(arr.questions)
-      console.log(`[question-utils] JSON.questions解析: ${validated.length}/${arr.questions.length} 道`)
+      logger.info(`[question-utils] JSON.questions解析: ${validated.length}/${arr.questions.length} 道`)
       return validated
     }
   } catch { /* continue */ }
@@ -46,8 +51,8 @@ export function parseExtractionResponse(
     // 尝试用更宽松的模式 — 查找 [{ 到 }]
     const looseMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
     if (!looseMatch) {
-      console.warn('[question-utils] 未找到 JSON 数组 (文本前200字):', text.slice(0, 200))
-      console.warn('[question-utils] 文本末200字:', text.slice(-200))
+      logger.warn('[question-utils] 未找到 JSON 数组 (文本前200字):', text.slice(0, 200))
+      logger.warn('[question-utils] 文本末200字:', text.slice(-200))
       return []
     }
     try {
@@ -66,12 +71,12 @@ export function parseExtractionResponse(
     if (items.length > 0) return items
   }
 
-  console.warn('[question-utils] 无法解析 LLM 返回:', text.slice(0, 200))
+  logger.warn('[question-utils] 无法解析 LLM 返回:', text.slice(0, 200))
   return []
 }
 
 // 验证过滤：必须有 q 和 a 字段
-function validateItems(arr: any[]): Array<{ q: string; a: string }> {
+export function validateItems(arr: any[]): Array<{ q: string; a: string }> {
   return arr.filter((x: any) => typeof x.q === 'string' && typeof x.a === 'string' && x.q.trim() && x.a.trim())
 }
 

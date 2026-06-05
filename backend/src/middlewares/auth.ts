@@ -18,12 +18,15 @@ declare global {
 }
 
 export function authenticate(req: Request, _res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw new UnauthorizedError('未提供认证令牌')
+  // 优先从 httpOnly cookie 读，fallback 到 Authorization header（向后兼容）
+  let token = req.cookies?.token
+  if (!token) {
+    const authHeader = req.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedError('未提供认证令牌')
+    }
+    token = authHeader.split(' ')[1]
   }
-
-  const token = authHeader.split(' ')[1]
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload
     req.user = decoded
