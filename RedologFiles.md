@@ -604,3 +604,159 @@
 - **问题**：智谱 embedding API（`embedding-2`，`open.bigmodel.cn`）返回 400，导致语义分块/分类器降级
 - **修复**：更换 API Key 为新的有效密钥（`7b7e84...`），embedding 恢复正常
 - **影响**：分类器语义判定恢复、向量检索恢复、语义分块恢复
+
+## 2026-06-04
+
+### 单元测试体系建设
+
+- **从零搭建测试框架**：`backend/vitest.config.ts`，`npm test` / `npm run test:watch` 命令
+- **新建** `backend/src/__tests__/unit/`（74 个用例）：
+  - `chunking.service.test.ts`（23 用例）：`cosineSimilarity`、`findBreakpoints`、`estimateTokens`、`splitLongSentence`、`addOverlap`
+  - `question-utils.test.ts`（22 用例）：`splitForExtraction`、`parseExtractionResponse`、`stripQuestionNumber`、`extractKnowledgePoint`
+  - `chat.service.test.ts`（13 用例）：`IncrementalJsonParser` 流式 JSON 解析状态机
+  - `retrieval.service.test.ts`（16 用例）：`rrfMerge`、`mmrSelect`、`jaccardOverlap`
+- **抓到真实 bug**：`splitForExtraction(text, 0)` 死循环至数组溢出，添加 `maxLen <= 0 || !text` 守卫修复
+
+### Winston 日志统一
+
+- **背景**：项目有 3 个互不通信的日志系统——100+ `console.log`、Winston（仅 2 处使用）、`debug.ts`（手写文件轮转）
+- **改造**：22 个文件中所有 `console.xxx` → `logger.xxx`
+- **`utils/logger.ts`**：新增 `createModuleLogger(module)` 工厂函数、`DEBUG_AI=true` 时增加 `logs/ai-debug.log` 输出、dev 模式 `printf` 格式显示 `[module]` 标签、生产模式 JSON
+- **`utils/debug.ts`**：删除手写 `fs.WriteStream` 管理（`initLogFile`/`writeLine`/`logStream`），8 个函数改用 `logger.debug`
+- **效果**：每次上传文档可看到完整链路（切块 → 向量化 → 分类 → 题目生成），终端实时 + 文件持久化
+- **Docker 日志挂载**：`docker-compose.yml` 新增 `./backend/logs:/app/logs` 绑定挂载
+
+### 文档级联删除
+
+- **新建** `backend/src/services/document-cleanup.service.ts`：统一 `deleteDocumentCascade()`，按序清理 LanceDB 向量 → MySQL 切块 → MySQL 题目 → 物理文件
+- **修复两个 bug**：
+  - `document.controller.ts` `remove()`：漏删 Questions
+  - `admin.controller.ts` `deleteDocument()`：只删了物理文件，漏删向量 + 切块 + 题目
+
+### Docker 构建修复
+
+- 移除死依赖 `@xenova/transformers`（间接依赖 `sharp`，GitHub 下载二进制国内超时）
+- 移除多余 `@types/bcryptjs`
+- MySQL 认证插件 `caching_sha2_password` → `mysql_native_password`
+- 修复 `check-db.js` 缺失（Dockerfile 新增 `COPY check-db.js ./`）
+- `backend/.dockerignore` 新建（排除 `.env`、`src/__tests__/`、`logs/` 等）
+
+### 日志生命周期
+
+- Winston File transport 添加 `options: { flags: 'w' }`，项目启动时清空旧日志
+
+### 切块参数调优
+
+- `maxSize` 250 → 500 字/块
+- `minSize` 80 → 150 字
+- 每块出题 `perChunk` 5 → 3
+
+## 2026-06-05
+
+### localStorage Token → httpOnly Cookie
+
+- **背景**：JWT 存在 `localStorage`，XSS 攻击可直接窃取
+- **后端**（5 文件）：
+  - `package.json`：新增 `cookie-parser` + `@types/cookie-parser`
+  - `app.ts`：`app.use(cookieParser())`
+  - `middlewares/auth.ts`：`authenticate()` 优先从 `req.cookies?.token` 读，fallback 到 Authorization header（向后兼容）
+  - `controllers/auth.controller.ts`：`login()`/`register()` 不再返回 token，改 `res.cookie('token', token, { httpOnly, secure: isProduction, sameSite: 'lax', maxAge: 7d })`，body 只返 `{ user }`；新增 `me()` 和 `logout()`
+  - `routes/auth.routes.ts`：新增 `GET /api/auth/me` 和 `POST /api/auth/logout`
+- **前端**（5 文件）：
+  - `api/client.ts`：`axios.create({ withCredentials: true })`，删除整个 request 拦截器（不再设 Authorization header），删除 401 中的 `localStorage.removeItem`
+  - `api/chat.ts`：`fetch()` 加 `credentials: 'include'`，删除手动 Authorization header（2 处）
+  - `stores/auth.ts`：`initFromStorage()` → `async initAuth()` 调 `/api/auth/me`；`login()`/`logout()` 不再操作 localStorage
+  - `main.ts`：`authStore.initFromStorage()` → `await authStore.initAuth()`
+  - `views/auth/Register.vue`：删除 2 行 `localStorage.setItem`
+- **共删除 13 处 localStorage token 操作**
+
+### 集成测试体系
+
+- 安装 `supertest` + `@types/supertest`
+- **新建** `backend/src/__tests__/helpers/test-setup.ts`：`initTestDb()` 统一初始化 `papier_test` 数据库（`sync({ force: true })` + 种子数据），防并行竞态的 Promise 锁
+- **新建** `backend/src/__tests__/integration/`（16 个用例）：
+  - `auth.test.ts`（9 用例）：注册/登录/me/登出
+  - `documents.test.ts`（7 用例）：列表/上传/详情/删除 + 权限校验
+- **`app.ts` 改造**：`NODE_ENV=test` 时跳过 `app.listen()` 和 LanceDB 初始化
+- **`vitest.config.ts`**：`fileParallelism: false`（防 DB 并行冲突）、`env` 覆盖、`setupFiles`
+
+### Swagger API 文档
+
+- 安装 `swagger-jsdoc` + `swagger-ui-express`
+- **新建** `backend/src/config/swagger.ts`：完整 OpenAPI 3.0 定义，39 个端点按 8 组展示
+- `app.ts` 挂载 `/api-docs` 路由
+
+### 登录校验全覆盖
+
+- **后端**：`chat.routes.ts` 4 端点 + `training.routes.ts` 4 端点注入 `authenticate` 中间件
+- **前端**：ChatView / DailyTraining / CollectedQuestions 三个路由加 `meta: { requiresAuth: true }`
+- AppTopbar 未登录时显示"登录"按钮（`v-else`）
+
+### Text2SQL
+
+- **新建** `backend/src/services/intent-classifier.service.ts`：关键词白名单（`统计`、`多少`、`排名` 等 24 个），命中 ≥2 个判定为 `data_query`
+- **新建** `backend/src/services/text2sql.service.ts`：LLM 生成 SQL（`temperature: 0`）→ 校验（只允许 SELECT、禁止多语句）→ `sequelize.query()` 执行 → 结果格式化
+- 安全：表名白名单（9 张表）、自动追加 `LIMIT 100`、INSERT/UPDATE/DELETE/DROP 检测拦截
+- `chat.controller.ts`：`ask()` 和 `askStream()` 在路由判定后加入意图分支，`data_query` 走 SQL 路径早返回
+
+## 2026-06-08
+
+### 已收录页面掌握筛选
+
+- **后端** `training.controller.ts`：
+  - `listQuestions` 新增 `practice_status` 筛选（`mastered` → 查已掌握的；`review` → 查需复习的），每用户独立，通过 PracticeRecord 过滤
+  - 每题返回 `userStatus` 字段（`'mastered'` / `'review'` / `null`）
+  - `record()` 改用 `findOne` → `create/update`（根治 `upsert` 重复记录导致同题同时出现在掌握和复习）
+  - 添加 `res.set('Cache-Control', 'no-store')` 避免浏览器缓存导致筛选不刷新
+- **前端** `CollectedQuestions.vue`：
+  - 新增筛选组（全部/已掌握/需复习）
+  - 每道题卡片添加"已掌握""需复习"按钮，`handleMarkStatus` 调用 `recordPractice`
+  - 按钮状态由 `userStatus` 驱动高亮
+- **数据库清理**：删除 PracticeRecords 重复数据，添加唯一索引 `(user_id, question_id)`
+- **AI 训练排除已掌握**：`generate()` 和 `generateStream()` 生成前查询 PracticeRecord 排除已掌握的题
+
+### LanceDB 存储文档标题
+
+- **问题**：检索日志中大量 `[未知文档]`，LanceDB 不存标题，回查 MySQL 找不到（孤立 chunk）
+- **修复**：
+  - `indexChunks` 新增 `documentTitle` 参数，写入 LanceDB
+  - `document.controller.ts` 调用时传入 `doc.title`
+  - `reindex-all.ts` 和 `rebuild-all.ts` 同步更新
+  - `retrieve()` 优先读 `r.documentTitle`，无则回退 MySQL
+
+### 题目提取质量优化
+
+- `question-extraction.service.ts`：
+  - 提示词重写：加 few-shot 示例、明确"必须有问号或提问词"、排除章节标题
+  - 切块大小 4000 → 2000 字
+  - 答案 < 100 字过滤丢弃
+
+### 难度投票算法
+
+- 中位数 → **众数**（出现最多的值，平局取最大值）
+- 锁定阈值 20 → **10 次**
+- 满 10 次清空 votes，拒绝新投票
+
+### 前端体验修复
+
+- **收起动画**：max-height CSS hack 改为 JS 实际高度 + 双帧重排，消除收起时的"先跳后收"问题（QuestionCard + CollectedQuestions）
+- **padding-top 固定**：移除 `.expanded` 状态控制的 `padding-top`，消除收起时的 14px 跳动
+- **星星常态可见**：未评分星颜色 `#e5e0d8` → `#d1ccc0`，在白色卡面上清晰可见
+
+### 路由守卫时序修复
+
+- **bug**：`app.use(router)` 触发初始导航 → `beforeEach` 先于 `initAuth()` 执行 → `isAuthenticated=false` → 刷新页面跳转登录
+- **修复**：`main.ts` 中 `app.use(router)` + `app.mount('#app')` 移入 `initAuth().then()` 回调内
+
+### 文档与部署
+
+- **CONTEXT.md** 完全重写：从 AI 开发规格转为 GitHub 项目介绍（功能亮点、架构图、技术栈、快速开始）
+- **CLAUDE.md** 更新：补齐 AI 依赖、数据库、测试命令
+- **SETUP.md** 修正：默认账号引用统一为 `13691620597 / qweasdzxc05811`
+- **seed.ts** 账号更新：`admin / admin123` → `13691620597 / qweasdzxc05811`
+- **全新部署验证**：`docker compose down -v` 清空所有数据卷 → `docker compose up -d --build` 重建成功，seed 自动执行
+
+### 已提交
+
+- Git commit `b300668`：28 文件，715 行新增，258 行删除
+- 分支：`dev/web`
