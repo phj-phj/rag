@@ -13,6 +13,7 @@ RUN npm install
 # 复制源码并编译
 COPY src/ ./src/
 COPY tsconfig.json ./
+COPY check-db.js ./
 RUN npm run build
 
 # 创建必要目录

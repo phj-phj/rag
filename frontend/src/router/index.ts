@@ -13,6 +13,7 @@ const router = createRouter({
       path: '/chat',
       name: 'ChatView',
       component: () => import('../views/ChatView.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/recent',
@@ -36,6 +37,7 @@ const router = createRouter({
       path: '/training',
       name: 'DailyTraining',
       component: () => import('../views/DailyTraining.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/docs/:id',
@@ -46,6 +48,7 @@ const router = createRouter({
       path: '/collected',
       name: 'CollectedQuestions',
       component: () => import('../views/CollectedQuestions.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/admin',
@@ -77,7 +80,10 @@ const router = createRouter({
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
 
+  console.log('[router] beforeEach', to.path, 'isAuthenticated=', authStore.isAuthenticated, 'token=', authStore.token)
+
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    console.warn('[router] 未登录，跳转 /login')
     next('/login')
     return
   }

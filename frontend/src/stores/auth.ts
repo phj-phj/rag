@@ -17,8 +17,14 @@ export const useAuthStore = defineStore('auth', () => {
         const data = await res.json()
         user.value = data.user
         token.value = 'cookie' // 标记已登录，实际 token 在 httpOnly cookie
+        console.log('[auth] initAuth 成功, token=', token.value)
+      } else {
+        console.warn('[auth] initAuth 失败 res.status=', res.status)
+        token.value = null
+        user.value = null
       }
-    } catch {
+    } catch (e) {
+      console.error('[auth] initAuth 异常', e)
       token.value = null
       user.value = null
     }

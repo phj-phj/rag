@@ -9,6 +9,9 @@ import {
   startTrainingStream,
 } from '../services/chat.service'
 import { parseExtractionResponse } from '../services/question-utils'
+import { createModuleLogger } from '../utils/logger'
+
+const logger = createModuleLogger('training')
 
 const TRAINING_PROMPT = `你是 Papier 出题助手。根据以下参考资料生成题目。
 
@@ -31,6 +34,8 @@ export async function listQuestions(req: Request, res: Response): Promise<void> 
   const sourceType = req.query.source_type as string | undefined
   const diff = req.query.difficulty as string | undefined
 
+  const practiceStatus = req.query.practice_status as string | undefined
+
   const where: any = { source_type: ['extracted', 'ai_pregenerated'] }
   if (sourceType && sourceType !== 'all') where.source_type = sourceType
   if (diff && diff !== 'all') where.difficulty = Number(diff)
@@ -41,13 +46,63 @@ export async function listQuestions(req: Request, res: Response): Promise<void> 
     ]
   }
 
+  // 已掌握 / 未掌握筛选（基于当前用户 PracticeRecord）
+  const userId = (req as any).user?.id
+  logger.info(`[listQuestions] practiceStatus=${practiceStatus} userId=${userId}`)
+  if (userId && practiceStatus === 'mastered') {
+    const masteredIds = await PracticeRecord.findAll({
+      attributes: ['question_id'],
+      where: { user_id: userId, status: 'mastered' },
+      raw: true,
+    })
+    where.id = masteredIds.map(r => r.question_id)
+    if (where.id.length === 0) {
+      res.json({ items: [], total: 0, page, pageSize })
+      return
+    }
+  } else if (userId && practiceStatus === 'review') {
+    const reviewIds = await PracticeRecord.findAll({
+      attributes: ['question_id'],
+      where: { user_id: userId, status: 'review' },
+      raw: true,
+    })
+    where.id = reviewIds.map(r => r.question_id)
+    if (where.id.length === 0) {
+      res.json({ items: [], total: 0, page, pageSize })
+      return
+    }
+  }
+
   const { count, rows } = await Question.findAndCountAll({
     where,
     order: [['id', 'DESC']],
     limit: pageSize,
     offset: (page - 1) * pageSize,
+    logging: (sql: string) => logger.info(`[listQuestions] SQL: ${sql}`),
   })
-  res.json({ items: rows, total: count, page, pageSize })
+  logger.info(`[listQuestions] 结果: count=${count} rows=${rows.length} where_keys=${Object.keys(where).join(',')}`)
+
+  // 附上当前用户的掌握状态
+  const uid = (req as any).user?.id
+  let statusMap: Map<number, string> = new Map()
+  if (uid && rows.length > 0) {
+    const records = await PracticeRecord.findAll({
+      attributes: ['question_id', 'status'],
+      where: { user_id: uid, question_id: rows.map(r => r.id) },
+      raw: true,
+    })
+    for (const r of records) {
+      statusMap.set(r.question_id, r.status)
+    }
+  }
+  const items = rows.map(r => {
+    const item = r.toJSON() as any
+    item.userStatus = statusMap.get(r.id) || null
+    return item
+  })
+
+  res.set('Cache-Control', 'no-store')
+  res.json({ items, total: count, page, pageSize })
 }
 
 // ── GET /api/questions/stats ──
@@ -73,6 +128,20 @@ export async function generate(req: Request, res: Response): Promise<void> {
   }
   if (topic) where.knowledge_point = { [Op.like]: `%${topic}%` }
   if (difficulty) where.difficulty = difficulty
+
+  // 排除当前用户已掌握的题
+  const userId = (req as any).user?.id
+  if (userId) {
+    const mastered = await PracticeRecord.findAll({
+      attributes: ['question_id'],
+      where: { user_id: userId, status: 'mastered' },
+      raw: true,
+    })
+    const masteredIds = mastered.map(r => r.question_id)
+    if (masteredIds.length > 0) {
+      where.id = { [Op.notIn]: masteredIds }
+    }
+  }
 
   const existing = await Question.findAll({
     where,
@@ -221,11 +290,21 @@ async function aiGenerateAdhoc(topic: string, count: number): Promise<any[]> {
 
 export async function record(req: Request, res: Response): Promise<void> {
   const { questionId, status } = req.body
-  const [record] = await PracticeRecord.upsert({
-    user_id: req.user!.id,
-    question_id: questionId,
-    status,
+  const userId = (req as any).user!.id
+
+  const existing = await PracticeRecord.findOne({
+    where: { user_id: userId, question_id: questionId },
   })
+  if (existing) {
+    await existing.update({ status })
+  } else {
+    await PracticeRecord.create({
+      user_id: userId,
+      question_id: questionId,
+      status,
+    })
+  }
+
   res.json({ message: '已记录' })
 }
 
@@ -242,15 +321,33 @@ export async function voteDifficulty(
   const currentVotes: number[] = Array.isArray(q.difficulty_votes)
     ? q.difficulty_votes
     : []
-  const votes: number[] = [...currentVotes, level]
-  const sorted = [...votes].sort((a, b) => a - b)
-  const median = sorted[Math.floor(sorted.length / 2)]
 
-  q.difficulty = median
-  q.difficulty_votes = votes.length >= 20 ? [] : votes
+  // 已锁定（votes=[] 且 difficulty 已确定），不再接受投票
+  if (currentVotes.length === 0 && q.difficulty != null) {
+    res.json({ difficulty: q.difficulty, votes: 10, locked: true })
+    return
+  }
+
+  const votes: number[] = [...currentVotes, level]
+
+  // 取众数（出现次数最多的值，平局取最大值）
+  const freq = new Map<number, number>()
+  for (const v of votes) freq.set(v, (freq.get(v) || 0) + 1)
+  let mode = votes[0]
+  let maxFreq = 0
+  for (const [v, f] of freq) {
+    if (f > maxFreq || (f === maxFreq && v > mode)) {
+      mode = v
+      maxFreq = f
+    }
+  }
+
+  const locked = votes.length >= 10
+  q.difficulty = mode
+  q.difficulty_votes = locked ? [] : votes
   await q.save()
 
-  res.json({ difficulty: median, votes: votes.length, locked: votes.length >= 20 })
+  res.json({ difficulty: mode, votes: votes.length, locked })
 }
 
 // ── GET /api/training/review ──

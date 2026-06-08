@@ -5,8 +5,8 @@ import { initTestDb } from '../helpers/test-setup'
 
 beforeAll(() => initTestDb())
 
-let adminCookies: string[]
-let userCookies: string[]
+let adminCookies: any
+let userCookies: any
 let testDocId: number
 
 describe('Documents 集成测试', () => {
@@ -14,12 +14,12 @@ describe('Documents 集成测试', () => {
     const adminRes = await request(app)
       .post('/api/auth/login')
       .send({ username: 'admin', password: 'admin123' })
-    adminCookies = adminRes.headers['set-cookie']
+    adminCookies = adminRes.headers['set-cookie'] as any
 
     const userRes = await request(app)
       .post('/api/auth/login')
       .send({ username: 'user', password: 'admin123' })
-    userCookies = userRes.headers['set-cookie']
+    userCookies = userRes.headers['set-cookie'] as any
   })
 
   describe('GET /api/documents', () => {
@@ -43,7 +43,7 @@ describe('Documents 集成测试', () => {
     it('登录后上传文件 → 201', async () => {
       const res = await request(app)
         .post('/api/documents')
-        .set('Cookie', adminCookies)
+        .set('Cookie', adminCookies as any)
         .field('title', '测试文档')
         .field('category_id', '1')
         .field('tags', JSON.stringify([1]))
@@ -74,7 +74,7 @@ describe('Documents 集成测试', () => {
     it('非上传者 → 403', async () => {
       const res = await request(app)
         .delete(`/api/documents/${testDocId}`)
-        .set('Cookie', userCookies)
+        .set('Cookie', userCookies as any)
 
       expect(res.status).toBe(403)
     })
@@ -82,7 +82,7 @@ describe('Documents 集成测试', () => {
     it('管理员可删除 → 200', async () => {
       const res = await request(app)
         .delete(`/api/documents/${testDocId}`)
-        .set('Cookie', adminCookies)
+        .set('Cookie', adminCookies as any)
 
       expect(res.status).toBe(200)
       expect(res.body.message).toBe('文档已删除')

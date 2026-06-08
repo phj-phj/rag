@@ -92,7 +92,7 @@ export async function compactTable(): Promise<void> {
 // ── 写入 ──
 
 export async function indexChunks(
-  rows: Array<{ id: number; document_id: number; content: string; embedding: number[] }>,
+  rows: Array<{ id: number; document_id: number; content: string; embedding: number[]; documentTitle: string }>,
 ): Promise<void> {
   if (rows.length === 0) return
 
@@ -102,6 +102,7 @@ export async function indexChunks(
     document_id: r.document_id,
     content: r.content,
     vector: r.embedding,
+    documentTitle: r.documentTitle,
   }))
 
   const names = await conn.tableNames()
@@ -154,20 +155,25 @@ export async function retrieve(question: string, topK: number = 5): Promise<Retr
   debugInfo('向量命中', vecResults.length)
   debugInfo('FTS命中', ftsResults.length)
 
-  // 补充文档标题
+  // 补充文档标题：优先用 LanceDB 中存好的标题，兼容旧数据回退 MySQL
   const allResults = [...vecResults, ...ftsResults]
-  const docIds = [...new Set(allResults.map((r: any) => r.document_id))]
-  const docs = await Document.findAll({
-    where: { id: docIds as number[] },
-    attributes: ['id', 'title'],
-  })
-  const titleMap = new Map(docs.map(d => [d.id, d.title]))
+  const docIds = [...new Set(
+    allResults.filter((r: any) => !r.documentTitle).map((r: any) => r.document_id),
+  )]
+  const titleMap = new Map<number, string>()
+  if (docIds.length > 0) {
+    const docs = await Document.findAll({
+      where: { id: docIds as number[] },
+      attributes: ['id', 'title'],
+    })
+    for (const d of docs) titleMap.set(d.id, d.title)
+  }
 
   // 将两路结果标准化为统一格式
   const toChunk = (r: any, src: 'vector' | 'fts', idx: number): any => ({
     chunkId: r.id,
     documentId: r.document_id,
-    documentTitle: titleMap.get(r.document_id) || '未知文档',
+    documentTitle: r.documentTitle || titleMap.get(r.document_id) || '未知文档',
     content: r.content,
     score: src === 'vector'
       ? Math.max(0, 1 - (r._distance ?? 0))

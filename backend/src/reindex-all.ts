@@ -1,4 +1,4 @@
-import { DocumentChunk } from './models'
+import { DocumentChunk, Document } from './models'
 import { embedTexts } from './services/embedding.service'
 import { indexChunks } from './services/retrieval.service'
 import { createModuleLogger } from './utils/logger'
@@ -14,6 +14,10 @@ async function reindex(): Promise<void> {
     process.exit(0)
   }
 
+  const docIds = [...new Set(chunks.map(c => c.document_id))]
+  const docs = await Document.findAll({ where: { id: docIds }, attributes: ['id', 'title'] })
+  const titleMap = new Map(docs.map(d => [d.id, d.title]))
+
   const BATCH = 10
   for (let i = 0; i < chunks.length; i += BATCH) {
     const batch = chunks.slice(i, i + BATCH)
@@ -24,6 +28,7 @@ async function reindex(): Promise<void> {
         document_id: c.document_id,
         content: c.content,
         embedding: embeddings[j],
+        documentTitle: titleMap.get(c.document_id) || '未知文档',
       }))
     )
     logger.info(`[reindex] 批次 ${Math.floor(i / BATCH) + 1}: ${batch.length} 个 chunk`)

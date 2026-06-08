@@ -56,7 +56,7 @@ async function rebuild(): Promise<void> {
       const batch = rows.slice(i, i + BATCH)
       const embeddings = await embedTexts(batch.map(r => r.content))
       await indexChunks(
-        batch.map((r, j) => ({ id: r.id, document_id: doc.id, content: r.content, embedding: embeddings[j] }))
+        batch.map((r, j) => ({ id: r.id, document_id: doc.id, content: r.content, embedding: embeddings[j], documentTitle: doc.title }))
       )
     }
 

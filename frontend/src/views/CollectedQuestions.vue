@@ -46,6 +46,12 @@
           <button :class="['filter-chip star', { active: filters.difficulty === 'all' }]" @click="setFilter('difficulty', 'all')">全部</button>
           <button v-for="l in 5" :key="l" :class="['filter-chip star', { active: filters.difficulty === String(l) }]" @click="setFilter('difficulty', String(l))">{{ l }}★</button>
         </div>
+        <div class="filter-divider" />
+        <div class="filter-group">
+          <button :class="['filter-chip', { active: filters.practiceStatus === 'all' }]" @click="setFilter('practiceStatus', 'all')">全部</button>
+          <button :class="['filter-chip', { active: filters.practiceStatus === 'mastered' }]" @click="setFilter('practiceStatus', 'mastered')">已掌握</button>
+          <button :class="['filter-chip', { active: filters.practiceStatus === 'review' }]" @click="setFilter('practiceStatus', 'review')">需复习</button>
+        </div>
         <span class="result-count">共 {{ total }} 道题目</span>
       </div>
 
@@ -83,8 +89,12 @@
               {{ expanded.has(q.id) ? '收起' : '展开' }}
             </button>
           </div>
-          <div class="q-answer">
+          <div :ref="(el: any) => answerRefs[q.id] = el" class="q-answer">
             <div class="q-answer-inner" v-html="renderMarkdown(q.explanation)" />
+          </div>
+          <div class="q-actions">
+            <button :class="['action-btn', { active: q.userStatus === 'mastered' }]" @click.stop="handleMarkStatus(q, 'mastered')">已掌握</button>
+            <button :class="['action-btn review', { active: q.userStatus === 'review' }]" @click.stop="handleMarkStatus(q, 'review')">需复习</button>
           </div>
         </div>
       </div>
@@ -105,7 +115,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { marked } from 'marked'
-import { listQuestions, getQuestionsStats } from '../api/training'
+import { listQuestions, getQuestionsStats, recordPractice } from '../api/training'
 import type { QuestionItem } from '../api/training'
 import AppTopbar from '../components/AppTopbar.vue'
 
@@ -115,6 +125,7 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(12)
 const expanded = ref(new Set<number>())
+const answerRefs: Record<number, HTMLElement> = {}
 
 const stats = reactive({ total: 0, extracted: 0, pregenerated: 0, knowledgePoints: 0 })
 
@@ -122,6 +133,7 @@ const filters = reactive({
   keyword: '',
   sourceType: 'all',
   difficulty: 'all',
+  practiceStatus: 'all',
 })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -163,9 +175,25 @@ function debouncedSearch() {
   searchTimer = setTimeout(() => { page.value = 1; fetchData() }, 300)
 }
 
-function toggle(id: number) {
+async function toggle(id: number) {
+  const el = answerRefs[id]
   const s = new Set(expanded.value)
-  if (s.has(id)) s.delete(id); else s.add(id)
+  const isExpanded = s.has(id)
+  if (el) {
+    if (isExpanded) {
+      el.style.transition = 'none'
+      el.style.maxHeight = el.scrollHeight + 'px'
+      el.offsetHeight
+      el.style.transition = 'max-height 0.35s ease'
+      el.style.maxHeight = '0px'
+    } else {
+      el.style.maxHeight = el.scrollHeight + 'px'
+      el.addEventListener('transitionend', () => {
+        el.style.maxHeight = 'none'
+      }, { once: true })
+    }
+  }
+  if (isExpanded) s.delete(id); else s.add(id)
   expanded.value = s
 }
 
@@ -197,11 +225,22 @@ async function fetchData() {
       keyword: filters.keyword || undefined,
       source_type: filters.sourceType,
       difficulty: filters.difficulty,
+      practice_status: filters.practiceStatus,
     })
     questions.value = data.items
     total.value = data.total
   } catch { /* ignore */ }
   loading.value = false
+}
+
+async function handleMarkStatus(
+  q: QuestionItem & { userStatus?: string | null },
+  status: 'mastered' | 'review',
+) {
+  try {
+    await recordPractice(q.id, status)
+    q.userStatus = status
+  } catch { /* ignore */ }
 }
 
 async function loadStats() {
@@ -309,20 +348,26 @@ onBeforeUnmount(() => {
 .q-tag.pregenerated { background: #eef2ff; color: #4f46e5; }
 .q-tag.kp { background: #f5f0e8; color: #6b7280; }
 .q-star-row { display: flex; gap: 1px; }
-.q-star { font-size: 0.7rem; color: #e5e0d8; }
+.q-star { font-size: 0.7rem; color: #d1ccc0; }
 .q-star.filled { color: #f59e0b; }
 .q-toggle-btn { padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; border: 1px solid var(--border); background: #fff; color: var(--amber); cursor: pointer; font-family: inherit; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
 .q-toggle-btn:hover { background: var(--amber); color: #fff; border-color: var(--amber); }
 .q-toggle-btn svg { width: 14px; height: 14px; transition: transform 0.3s; }
 .q-card.expanded .q-toggle-btn svg { transform: rotate(180deg); }
 .q-answer { max-height: 0; overflow: hidden; transition: max-height 0.35s ease; }
-.q-card.expanded .q-answer { max-height: 2000px; }
-.q-answer-inner { margin: 0 24px; padding: 0 0 18px; border-top: 1px solid var(--border); font-size: 0.88rem; line-height: 1.8; color: #374151; }
-.q-card.expanded .q-answer-inner { padding-top: 14px; }
+.q-answer-inner { margin: 0 24px; padding: 14px 0 18px; border-top: 1px solid var(--border); font-size: 0.88rem; line-height: 1.8; color: #374151; }
 .q-answer-inner :deep(strong) { color: var(--ink); }
 .q-answer-inner :deep(ul), .q-answer-inner :deep(ol) { margin-left: 18px; margin-bottom: 8px; }
 .q-answer-inner :deep(li) { margin-bottom: 3px; }
 .q-answer-inner :deep(code) { background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 3px; font-size: 0.87em; }
+
+/* ▸ Action buttons ▸ */
+.q-actions { display: flex; gap: 8px; padding: 0 24px 16px; }
+.action-btn { padding: 7px 16px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; border: 1px solid var(--border); background: #fff; cursor: pointer; font-family: inherit; transition: all 0.15s; color: #6b7280; }
+.action-btn:hover { border-color: #10b981; color: #10b981; }
+.action-btn.active { background: #ecfdf5; border-color: #10b981; color: #059669; }
+.action-btn.review:hover { border-color: #f59e0b; color: #f59e0b; }
+.action-btn.review.active { background: #fffbeb; border-color: #f59e0b; color: #d97706; }
 
 /* ▸ Pagination ▸ */
 .pagination { display: flex; justify-content: center; gap: 4px; margin-top: 32px; }

@@ -12,7 +12,7 @@
       </button>
     </div>
 
-    <div class="q-answer">
+    <div ref="answerEl" class="q-answer">
       <div class="q-answer-inner" v-html="renderMarkdown(question.explanation)" />
     </div>
 
@@ -51,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { marked } from 'marked'
 import type { QuestionCard as QuestionCardType } from '../../types/api'
 
@@ -67,6 +67,7 @@ const emit = defineEmits<{
 }>()
 
 const votedLevel = ref<number | null>(null)
+const answerEl = ref<HTMLElement | null>(null)
 
 const difficultyLocked = computed(() => {
   const dv = props.question.difficulty_votes
@@ -77,7 +78,26 @@ const difficultyLocked = computed(() => {
   )
 })
 
-function toggle() {
+async function toggle() {
+  const el = answerEl.value
+  if (!el) {
+    props.question.isExpanded = !props.question.isExpanded
+    return
+  }
+  if (props.question.isExpanded) {
+    // 收起：先锁定当前实际高度，强制浏览器渲染，再过渡到 0
+    el.style.transition = 'none'
+    el.style.maxHeight = el.scrollHeight + 'px'
+    el.offsetHeight // 强制 reflow，确保浏览器注册了起始高度
+    el.style.transition = 'max-height 0.35s ease'
+    el.style.maxHeight = '0px'
+  } else {
+    // 展开：先展开到实际高度，过渡结束后放开限制
+    el.style.maxHeight = el.scrollHeight + 'px'
+    el.addEventListener('transitionend', () => {
+      el.style.maxHeight = 'none'
+    }, { once: true })
+  }
   props.question.isExpanded = !props.question.isExpanded
 }
 
@@ -132,13 +152,11 @@ function pad(n: number) {
 .q-toggle:hover { background: #c4873b; color: #fff; border-color: #c4873b; }
 .q-toggle svg { width: 14px; height: 14px; transition: transform 0.3s; }
 .q-card.expanded .q-toggle svg { transform: rotate(180deg); }
-.q-answer { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; }
-.q-card.expanded .q-answer { max-height: 2000px; }
+.q-answer { max-height: 0; overflow: hidden; transition: max-height 0.35s ease; }
 .q-answer-inner {
-  padding: 0 24px 20px; margin: 0 24px; border-top: 1px solid #e8e2d7;
+  padding: 16px 24px 20px; margin: 0 24px; border-top: 1px solid #e8e2d7;
   font-size: 0.9rem; line-height: 1.8; color: #374151;
 }
-.q-card.expanded .q-answer-inner { padding-top: 16px; }
 .q-answer-inner :deep(p) { margin: 0 0 8px; }
 .q-answer-inner :deep(strong) { color: #2c2418; font-weight: 700; }
 .q-answer-inner :deep(em) { font-style: italic; }

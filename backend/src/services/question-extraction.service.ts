@@ -38,15 +38,19 @@ const extractionLlm = new ChatOpenAI({
   },
 })
 
-const EXTRACTION_PROMPT = `你是一个题目提取助手。从以下文档内容中识别并提取所有论述题。
+const EXTRACTION_PROMPT = `你是题目提取助手。从文档中提取所有真实的题目（含题干和答案）。
 
-要求：
-1. 只提取明确是"题目"或"问题"的内容，不要自己编造
-2. 题干原样提取，只修正明显的排版问题（多余空行、混乱标点），不改变文字内容
-3. 答案从原文对应部分提取，不添加原文没有的内容
-4. 每道题包含: {"q": "题目/问题", "a": "参考答案/解析"}
-5. 以 JSON 数组格式输出: [{"q": "...", "a": "..."}, ...]
-6. 如果内容中没有题目或问题，返回空数组 []
+规则：
+1. 只提取包含问号（？）、或包含"什么是/如何/简述/请说明/对比/区别"等明显提问词的句子作为题干
+2. 文档中的小节标题（如"核心作用"、"未来计划"、"概述"）不是题目，忽略
+3. 题干原样保留，只修正排版混乱
+4. 答案从原文对应段落提取，必须详细完整，不少于100字
+5. 答案过短或原文找不到完整答案的，不要提取该题
+6. 输出 JSON 数组: [{"q": "题目", "a": "答案"}, ...]
+7. 没有任何符合要求的题目时，返回 []
+
+示例输出：
+[{"q": "什么是虚拟DOM？优点有哪些？", "a": "虚拟DOM是一个JS对象，用于描述视图的界面结构。React官方将其定义为一种编程概念和思想。优点包括：1）性能优化：通过diff算法减少真实DOM操作；2）跨平台：虚拟DOM是JS对象，不依赖具体平台；3）声明式编程：开发者只需描述UI状态，框架负责更新DOM。"}]
 
 文档内容：
 {chunk}`
@@ -68,7 +72,7 @@ export async function extractQuestionsFromDocument(
   }
 
   logger.info(`[提取]   提取文本: ${fullText.length} 字符`)
-  const chunks = splitForExtraction(fullText, 4000)
+  const chunks = splitForExtraction(fullText, 2000)
   logger.info(`[提取]   切分为 ${chunks.length} 块`)
   let totalExtracted = 0
 
@@ -84,19 +88,25 @@ export async function extractQuestionsFromDocument(
       logger.info(`[提取]   块${i + 1}/${chunks.length}: LLM返回${text.length}字符 → 解析出${questions.length}题 (耗时${Date.now() - cStart}ms)`)
 
       if (questions.length > 0) {
-        await Question.bulkCreate(
-          questions.map((q) => ({
-            stem: stripQuestionNumber(q.q),
-            explanation: q.a.trim(),
-            type: 'essay' as const,
-            source_type: 'extracted' as const,
-            source_document_id: docId,
-            knowledge_point: extractKnowledgePoint(q.q),
-            difficulty_votes: [] as number[],
-          } as any)),
-        )
-        totalExtracted += questions.length
-        logger.info(`[提取]   块${i + 1}: 已写入数据库，累计${totalExtracted}题`)
+        const valid = questions.filter((q) => q.a.trim().length >= 100)
+        if (valid.length < questions.length) {
+          logger.info(`[提取]   块${i + 1}: 过滤掉 ${questions.length - valid.length} 道答案过短的题`)
+        }
+        if (valid.length > 0) {
+          await Question.bulkCreate(
+            valid.map((q) => ({
+              stem: stripQuestionNumber(q.q),
+              explanation: q.a.trim(),
+              type: 'essay' as const,
+              source_type: 'extracted' as const,
+              source_document_id: docId,
+              knowledge_point: extractKnowledgePoint(q.q),
+              difficulty_votes: [] as number[],
+            } as any)),
+          )
+          totalExtracted += valid.length
+          logger.info(`[提取]   块${i + 1}: 已写入数据库，累计${totalExtracted}题`)
+        }
       } else {
         logger.warn(`[提取]   块${i + 1}: 未解析出有效题目 (LLM原始响应前200字: ${text.slice(0, 200)})`)
       }

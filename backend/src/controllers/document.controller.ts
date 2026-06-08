@@ -161,13 +161,13 @@ export async function create(req: Request, res: Response): Promise<void> {
 
   // 响应返回后再异步切块，不阻塞上传
   for (const doc of createdDocs) {
-    chunkDocument(doc.id as number, doc.file_path as string, doc.file_type as string)
+    chunkDocument(doc.id as number, doc.file_path as string, doc.file_type as string, doc.title as string)
   }
 }
 
 // ── RAG: 文档上传后异步切块 ──
 
-async function chunkDocument(docId: number, filePath: string, fileType: string): Promise<void> {
+async function chunkDocument(docId: number, filePath: string, fileType: string, docTitle?: string): Promise<void> {
   try {
     const fullPath = path.resolve(process.cwd(), filePath)
     const text = await getDocumentTextForChunking(fullPath, fileType)
@@ -203,6 +203,7 @@ async function chunkDocument(docId: number, filePath: string, fileType: string):
           document_id: docId,
           content: r.content,
           embedding: embeddings[i],
+          documentTitle: docTitle || '',
         }))
       )
       logger.info(`[RAG] 文档 ${docId} 向量化+索引完成：${embeddings.length} 个向量`)

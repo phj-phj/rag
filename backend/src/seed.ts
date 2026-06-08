@@ -20,14 +20,13 @@ async function seed(): Promise<void> {
   ])
   logger.info('默认分类已创建')
 
-  const adminHash = await bcrypt.hash('admin123', 10)
+  const adminHash = await bcrypt.hash('qweasdzxc05811', 10)
   const userHash = await bcrypt.hash('user123', 10)
 
   await User.bulkCreate([
-    { username: 'admin', password: adminHash, role: 'admin' },
+    { username: '13691620597', password: adminHash, role: 'admin' },
     { username: 'user', password: userHash, role: 'user' },
   ])
-  logger.info('默认用户已创建 (admin/admin123, user/user123)')
 
   await Tag.bulkCreate([
     { name: 'JavaScript' },

@@ -18,10 +18,10 @@ import {
 
 const router = Router()
 
-router.get('/questions', listQuestions)
-router.get('/questions/stats', questionStats)
-router.post('/generate', validate(generateSchema), generate)
-router.post('/generate/stream', validate(generateSchema), generateStream)
+router.get('/questions', authenticate, listQuestions)
+router.get('/questions/stats', authenticate, questionStats)
+router.post('/generate', authenticate, validate(generateSchema), generate)
+router.post('/generate/stream', authenticate, validate(generateSchema), generateStream)
 router.post('/record', authenticate, validate(recordSchema), record)
 router.post('/difficulty', authenticate, validate(difficultySchema), voteDifficulty)
 router.get('/review', authenticate, getReview)

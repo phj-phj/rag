@@ -82,6 +82,7 @@ export async function me(req: Request, res: Response): Promise<void> {
   if (!user) {
     throw new UnauthorizedError('用户不存在')
   }
+  res.set('Cache-Control', 'no-store')
   res.json({ user })
 }
 

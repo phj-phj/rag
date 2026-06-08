@@ -26,6 +26,7 @@
           </div>
         </Transition>
       </div>
+      <router-link v-else to="/login" class="btn-login">登录</router-link>
     </div>
   </header>
 
@@ -107,6 +108,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
 .btn-admin:hover { background: var(--amber, #c4873b); color: #fff; }
 .btn-upload { padding: 7px 18px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; color: #fff; background: var(--amber, #c4873b); border: none; cursor: pointer; font-family: inherit; margin-right: 10px; transition: all 0.2s; }
 .btn-upload:hover { background: #a06a28; }
+.btn-login { padding: 7px 18px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; color: #fff; background: var(--amber, #c4873b); border: none; text-decoration: none; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+.btn-login:hover { background: #a06a28; }
 
 @media (max-width: 768px) {
   .top-nav { display: none; }

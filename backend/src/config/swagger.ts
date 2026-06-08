@@ -86,10 +86,7 @@ const options: swaggerJsdoc.Options = {
   apis: [],
 }
 
-const spec = swaggerJsdoc(options)
-
-// Manually add paths for full control (swagger-jsdoc JSDoc approach
-// doesn't work well with TypeScript decorator-free Express)
+const spec: any = swaggerJsdoc(options)
 
 spec.paths = {
   '/': {

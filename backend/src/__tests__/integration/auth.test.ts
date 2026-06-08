@@ -6,7 +6,7 @@ import { initTestDb } from '../helpers/test-setup'
 beforeAll(() => initTestDb())
 
 describe('Auth 集成测试', () => {
-  let cookies: string[]
+  let cookies: any
 
   describe('POST /api/auth/register', () => {
     it('注册新用户 → 201 + cookie', async () => {
@@ -49,7 +49,7 @@ describe('Auth 集成测试', () => {
       expect(res.body.user.username).toBe('admin')
       expect(res.body.user.role).toBe('admin')
       expect(res.headers['set-cookie']).toBeDefined()
-      cookies = res.headers['set-cookie']
+      cookies = res.headers['set-cookie'] as any
     })
 
     it('错误密码 → 401', async () => {
@@ -73,7 +73,7 @@ describe('Auth 集成测试', () => {
     it('带 cookie → 200 + 当前用户', async () => {
       const res = await request(app)
         .get('/api/auth/me')
-        .set('Cookie', cookies)
+        .set('Cookie', cookies as any)
 
       expect(res.status).toBe(200)
       expect(res.body.user.username).toBe('admin')
@@ -89,7 +89,7 @@ describe('Auth 集成测试', () => {
     it('清除 cookie', async () => {
       const res = await request(app)
         .post('/api/auth/logout')
-        .set('Cookie', cookies)
+        .set('Cookie', cookies as any)
 
       expect(res.status).toBe(200)
       expect(res.body.message).toBe('已登出')

@@ -5,6 +5,8 @@ import { rewriteQuery } from '../services/rewrite.service'
 import { routeQuery } from '../services/router.service'
 import { debugPhase, debugInfo, debugRetrieval, debugConfidence, debugLLM, debugTiming, debugRoute } from '../utils/debug'
 import { BadRequestError } from '../utils/errors'
+import { classifyIntent } from '../services/intent-classifier.service'
+import { executeText2Sql } from '../services/text2sql.service'
 import { createModuleLogger } from '../utils/logger'
 
 const logger = createModuleLogger('chat')
@@ -31,6 +33,16 @@ export async function ask(req: Request, res: Response): Promise<void> {
   // 路由判定
   const route = routeQuery(question)
   debugRoute(route.verdict, route.score, route.reason)
+
+  // Text2SQL：查元数据的问题走 SQL 路径
+  const intent = classifyIntent(question)
+  if (intent === 'data_query') {
+    logger.info(`[chat] Text2SQL 路径: ${question.slice(0, 40)}`)
+    const sqlAnswer = await executeText2Sql(question)
+    debugTiming()
+    res.json({ answer: sqlAnswer, model: 'text2sql', docs: [] })
+    return
+  }
 
   try {
     // Query 泛化 + 检索（快速/深度共用）
@@ -97,6 +109,16 @@ export async function askStream(req: Request, res: Response): Promise<void> {
   // 路由判定
   const route = routeQuery(question)
   debugRoute(route.verdict, route.score, route.reason)
+
+  // Text2SQL：查元数据的问题走 SQL 路径（非流式直接返回）
+  const intent = classifyIntent(question)
+  if (intent === 'data_query') {
+    logger.info(`[chat-stream] Text2SQL 路径: ${question.slice(0, 40)}`)
+    const sqlAnswer = await executeText2Sql(question)
+    debugTiming()
+    res.json({ answer: sqlAnswer, model: 'text2sql', docs: [] })
+    return
+  }
 
   // Query 泛化
   const rewritten = await rewriteQuery(question)

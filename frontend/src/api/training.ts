@@ -12,6 +12,7 @@ export interface QuestionItem {
   source_type: 'extracted' | 'ai_pregenerated' | 'ai_adhoc'
   source_document_id: number | null
   created_at: string
+  userStatus?: string | null
 }
 
 export interface QuestionsStats {
@@ -23,7 +24,7 @@ export interface QuestionsStats {
 
 export function listQuestions(params: {
   page?: number; pageSize?: number; keyword?: string
-  source_type?: string; difficulty?: string
+  source_type?: string; difficulty?: string; practice_status?: string
 }) {
   return client.get<{ items: QuestionItem[]; total: number; page: number; pageSize: number }>(
     '/training/questions', { params },
