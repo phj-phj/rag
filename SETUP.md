@@ -35,7 +35,7 @@ copy backend\.env.example backend\.env
 docker compose up -d
 ```
 
-浏览器打开 `http://localhost`，用 `admin / qweasdzxc05811` 登录。
+浏览器打开 `http://localhost`，用 `13691620597 / qweasdzxc05811` 登录。
 
 ### 常用命令
 
@@ -161,7 +161,7 @@ npm run seed
 ```
 数据库表已重新创建
 默认分类已创建
-默认用户已创建 (admin/qweasdzxc05811, user/user123)
+默认用户已创建 (13691620597/qweasdzxc05811, user/user123)
 默认标签已创建
 种子数据初始化完成
 ```
@@ -201,7 +201,7 @@ cd frontend && npm run build    # 打包前端
 
 | 角色 | 用户名 | 密码 |
 |------|--------|------|
-| 管理员 | `admin` | `qweasdzxc05811` |
+| 管理员 | `13691620597` | `qweasdzxc05811` |
 | 普通用户 | `user` | `user123` |
 
 ---

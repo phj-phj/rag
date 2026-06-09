@@ -27,9 +27,6 @@ defineAssociations()
 const app = express()
 const PORT = process.env.PORT || 3000
 
-// 信任 Nginx 代理，解决 express-rate-limit X-Forwarded-For 警告
-app.set('trust proxy', 1)
-
 app.use(requestId)
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
