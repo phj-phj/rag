@@ -59,7 +59,7 @@ docker compose up -d
 
 浏览器打开 `http://localhost`。
 
-默认账号：`13691620597` / `qweasdzxc05811`（管理员），`user` / `user123`（普通用户）。
+默认账号：`admin` / `qweasdzxc05811`（管理员），`user` / `user123`（普通用户）。
 
 ### 手动安装
 

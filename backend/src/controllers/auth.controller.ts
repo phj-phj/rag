@@ -5,12 +5,14 @@ import env from '../config/env'
 import { User } from '../models'
 import { UnauthorizedError } from '../utils/errors'
 
-const isProduction = process.env.NODE_ENV === 'production'
+function isHttps(req: Request): boolean {
+  return req.secure || req.get('x-forwarded-proto') === 'https'
+}
 
-function setTokenCookie(res: Response, token: string): void {
+function setTokenCookie(req: Request, res: Response, token: string): void {
   res.cookie('token', token, {
     httpOnly: true,
-    secure: isProduction,
+    secure: isHttps(req),
     sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7天
     path: '/',
@@ -33,7 +35,7 @@ export async function login(req: Request, res: Response): Promise<void> {
   const payload = { id: user.id, username: user.username, role: user.role }
   const token = jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN } as any)
 
-  setTokenCookie(res, token)
+  setTokenCookie(req, res, token)
 
   res.json({
     user: {
@@ -41,6 +43,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       username: user.username,
       role: user.role,
     },
+    token,
   })
 }
 
@@ -63,7 +66,7 @@ export async function register(req: Request, res: Response): Promise<void> {
   const payload = { id: user.id, username: user.username, role: user.role }
   const token = jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN } as any)
 
-  setTokenCookie(res, token)
+  setTokenCookie(req, res, token)
 
   res.status(201).json({
     message: '注册成功',
@@ -86,10 +89,10 @@ export async function me(req: Request, res: Response): Promise<void> {
   res.json({ user })
 }
 
-export async function logout(_req: Request, res: Response): Promise<void> {
+export async function logout(req: Request, res: Response): Promise<void> {
   res.clearCookie('token', {
     httpOnly: true,
-    secure: isProduction,
+    secure: isHttps(req),
     sameSite: 'lax',
     path: '/',
   })

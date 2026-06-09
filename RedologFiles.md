@@ -752,8 +752,8 @@
 
 - **CONTEXT.md** 完全重写：从 AI 开发规格转为 GitHub 项目介绍（功能亮点、架构图、技术栈、快速开始）
 - **CLAUDE.md** 更新：补齐 AI 依赖、数据库、测试命令
-- **SETUP.md** 修正：默认账号引用统一为 `13691620597 / qweasdzxc05811`
-- **seed.ts** 账号更新：`admin / admin123` → `13691620597 / qweasdzxc05811`
+- **SETUP.md** 修正：默认账号引用统一为 `admin / qweasdzxc05811`
+- **seed.ts** 账号更新：`admin / admin123` → `admin / qweasdzxc05811`
 - **全新部署验证**：`docker compose down -v` 清空所有数据卷 → `docker compose up -d --build` 重建成功，seed 自动执行
 
 ### 已提交
