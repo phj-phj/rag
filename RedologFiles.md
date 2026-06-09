@@ -760,3 +760,69 @@
 
 - Git commit `b300668`：28 文件，715 行新增，258 行删除
 - 分支：`dev/web`
+
+## 2026-06-09
+
+### 生产环境重新部署
+
+- **服务器**：阿里云 ECS 2核2G Ubuntu 22.04，IP `47.95.112.34`
+- **全新清空重来**：`pm2 delete all` → `rm -rf /var/www/papier` → 重新打包上传
+
+### 部署采坑记录
+
+- **httpOnly Cookie `secure` 开关**：原逻辑 `secure: isProduction`（`NODE_ENV=production` 即强制 secure），但服务器跑 HTTP 没配 HTTPS，浏览器拒绝发送 secure cookie → `/api/auth/me` 返回 401 → 刷新页面跳转登录。修复：改为 `isHttps(req)` 按实际请求协议判断（检查 `req.secure` 和 `X-Forwarded-Proto` 头）。同时 `clearCookie` 同步修复
+- **解压未覆盖源文件**：unzip 行为不确定导致旧代码残留，最终清空目录从头来
+- **MySQL 权限**：`.env` 默认 `DB_USER=phj`，服务器 MySQL 无此用户 → seed 失败。改用 `sudo mysql` 创建 `papier@localhost` 用户授权
+- **前端构建 OOM**：2G 内存 Vite 卡死，改用**本地 Windows 构建前端 dist** → `scp -r` 上传到服务器，避免服务器端编译
+- **上传 500**：`uploads/` 目录未创建 → `mkdir -p`
+- **AI 输出空白**：`.env` 中 MIMO 配置错误 — `MIMO_BASE_URL=platform.deepseek.com`（应为 `api.deepseek.com/v1`），`MIMO_MODEL=deepseek-deepseek-v4-pro`（模型名不存在）。后切换至**阿里云百炼**平台（`dashscope.aliyuncs.com/compatible-mode/v1`），模型用 `deepseek-v3.2`
+- **reindex 循环引用崩溃**：Winston `printf` 中 `JSON.stringify(rest)` 遇到 `ClientRequest` 循环引用对象报错。源文件 logger.ts 修复为 try-catch 包裹
+- **Embedding 变量名不匹配**：`.env` 只有旧变量名 `SILICONFLOW_*`，代码实际读 `EMBED_*` → 401。补上 `EMBED_BASE_URL`、`EMBED_API_KEY`、`EMBED_MODEL` 配置
+- **LanceDB 无数据**：新部署未建索引 → `npx ts-node src/reindex-all.ts`（259 chunk）
+
+### 最终架构
+
+```
+浏览器 → Nginx (:80)
+           ├─ /          → /var/www/papier/frontend/dist/
+           ├─ /api/*     → proxy_pass 127.0.0.1:3000
+           ├─ /api/chat/ask/stream     → proxy_buffering off (SSE)
+           ├─ /api/chat/train/stream   → proxy_buffering off (SSE)
+           ├─ /api/training/generate/stream → proxy_buffering off (SSE)
+           └─ /uploads/* → alias /var/www/papier/backend/uploads/
+           
+pm2 → papier-api (Node.js :3000)
+  ├─ MySQL (papier@localhost)
+  ├─ LanceDB (lancedb_data/)
+  └─ AI: 阿里云百炼 deepseek-v3.2 + 智谱 embedding-2
+```
+
+### 当前运行状态
+
+- 登录/注册正常（httpOnly Cookie 区分 HTTP/HTTPS）
+- 文档上传正常（uploads 目录已创建）
+- AI 助手：待 reindex 完成 + embedding 连通后可用
+- 上传包大小 657K（tar.gz，排除 node_modules）
+
+### 部署命令速查
+
+```bash
+# 打包
+tar --exclude='node_modules' --exclude='dist' --exclude='.git' \
+    --exclude='lancedb_data' --exclude='uploads' --exclude='logs' \
+    -czf papier-deploy.tar.gz backend frontend deploy
+
+# 上传
+scp papier-deploy.tar.gz root@47.95.112.34:/var/www/
+
+# 服务器部署
+cd /var/www && tar -xzf papier-deploy.tar.gz
+mkdir -p /var/www/papier && mv backend frontend deploy /var/www/papier/
+cd /var/www/papier/backend
+cp .env.example .env    # 编辑填入真实配置
+npm install && npm run build && npm run seed
+# 前端本地构建后 scp -r dist 上传到 /var/www/papier/frontend/dist
+cp /var/www/papier/deploy/nginx.conf /etc/nginx/sites-available/papier
+nginx -t && systemctl reload nginx
+cd /var/www/papier && pm2 start deploy/ecosystem.config.js && pm2 save
+```
