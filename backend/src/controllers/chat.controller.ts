@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { askDocument, askDocumentStream, askDocumentForTraining, startTrainingStream } from '../services/chat.service'
+import { askDocument, askDocumentStream, askDocumentForTraining, startTrainingStream, routeWithLLM } from '../services/chat.service'
 import { retrieve } from '../services/retrieval.service'
 import { rewriteQuery } from '../services/rewrite.service'
 import { routeQuery } from '../services/router.service'
@@ -34,13 +34,18 @@ export async function ask(req: Request, res: Response): Promise<void> {
   const route = routeQuery(question)
   debugRoute(route.verdict, route.score, route.reason)
 
-  // Text2SQL：查元数据的问题走 SQL 路径
-  const intent = classifyIntent(question)
-  if (intent === 'data_query') {
-    logger.info(`[chat] Text2SQL 路径: ${question.slice(0, 40)}`)
+  // AI 智能路由：一次 LLM 调用判断走 SQL / 直接回答 / 文档检索
+  const router = await routeWithLLM(question, req.body.history)
+  if (router.route === 'sql') {
     const sqlAnswer = await executeText2Sql(question)
     debugTiming()
     res.json({ answer: sqlAnswer, model: 'text2sql', docs: [] })
+    return
+  }
+  if (router.route === 'direct') {
+    debugInfo('路由结果', '直接回答')
+    debugTiming()
+    res.json({ answer: router.answer!, model: 'chat', docs: [] })
     return
   }
 
@@ -118,13 +123,30 @@ export async function askStream(req: Request, res: Response): Promise<void> {
   const route = routeQuery(question)
   debugRoute(route.verdict, route.score, route.reason)
 
-  // Text2SQL：查元数据的问题走 SQL 路径（非流式直接返回）
-  const intent = classifyIntent(question)
-  if (intent === 'data_query') {
-    logger.info(`[chat-stream] Text2SQL 路径: ${question.slice(0, 40)}`)
+  // AI 智能路由：一次 LLM 调用判断走哪条路
+  const router = await routeWithLLM(question, history)
+  if (router.route === 'sql') {
     const sqlAnswer = await executeText2Sql(question)
     debugTiming()
-    res.json({ answer: sqlAnswer, model: 'text2sql', docs: [] })
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders()
+    res.write(`data: {"type":"token","content":${JSON.stringify(sqlAnswer)}}\n\n`)
+    res.write('data: [DONE]\n\n')
+    res.end()
+    return
+  }
+  if (router.route === 'direct') {
+    debugInfo('路由结果', '直接回答')
+    debugTiming()
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders()
+    res.write(`data: {"type":"token","content":${JSON.stringify(router.answer!)}}\n\n`)
+    res.write('data: [DONE]\n\n')
+    res.end()
     return
   }
 

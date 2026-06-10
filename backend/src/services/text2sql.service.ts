@@ -10,7 +10,10 @@ const SCHEMA_PROMPT = `你是 MySQL 查询生成器。根据以下数据库 Sche
 规则：
 1. 只生成 SELECT 查询，禁止 INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE
 2. 只返回 SQL 语句本身，不要任何解释、markdown 代码块、注释
-3. 支持的表和字段：
+3. 禁止 SELECT *，必须明确列出需要的字段
+4. 禁止查询 Users 表的 password 字段
+
+支持的表和字段：
 
 -- 用户表
 Users: id, username, role('user'/'admin'), created_at
@@ -102,7 +105,16 @@ export async function executeText2Sql(question: string): Promise<string> {
       return '没有找到符合条件的数据。'
     }
 
-    const formatted = formatResult(rows)
+    // 安全兜底：移除密码字段
+    const safe = rows.map((r: any) => {
+      if (r.password !== undefined) {
+        const { password, ...rest } = r
+        return rest
+      }
+      return r
+    })
+
+    const formatted = formatResult(safe)
     return formatted
   } catch (err) {
     logger.error('SQL 执行失败:', (err as Error).message)
