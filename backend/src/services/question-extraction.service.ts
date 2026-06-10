@@ -28,7 +28,7 @@ import {
 
 
 const extractionLlm = new ChatOpenAI({
-  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-chat',
+  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-v3.2',
   temperature: 0.1,
   maxTokens: 4096,
   apiKey: process.env.MIMO_API_KEY || '',

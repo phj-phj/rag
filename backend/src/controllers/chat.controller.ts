@@ -76,8 +76,11 @@ export async function ask(req: Request, res: Response): Promise<void> {
     const avgScore = filtered.reduce((s, r) => s + r.score, 0) / filtered.length
     debugConfidence(avgScore, avgScore >= 0.3 ? 'high' : avgScore >= 0.15 ? 'medium' : 'low')
 
-    const topDoc = filtered[0]
-    const docs = topDoc ? [{ id: topDoc.documentId, title: topDoc.documentTitle }] : []
+    const seen = new Set<number>()
+    const docs = filtered
+      .filter(r => { if (seen.has(r.documentId)) return false; seen.add(r.documentId); return true })
+      .slice(0, 3)
+      .map(r => ({ id: r.documentId, title: r.documentTitle }))
 
     // ── LLM 生成 ──
     const chunks = filtered.map(r => ({
@@ -87,7 +90,7 @@ export async function ask(req: Request, res: Response): Promise<void> {
     }))
 
     const llmStart = Date.now()
-    const result = await askDocument(question, chunks, req.body.thinking === true)
+    const result = await askDocument(question, chunks, req.body.thinking === true, req.body.history)
     debugLLM(0, Date.now() - llmStart, 0)
     debugTiming()
 
@@ -101,10 +104,15 @@ export async function ask(req: Request, res: Response): Promise<void> {
 // ── 流式 SSE ──
 
 export async function askStream(req: Request, res: Response): Promise<void> {
-  const { question } = req.body
+  const { question, history } = req.body
 
   debugPhase('收到问题 (流式)')
   debugInfo('原始问题', question)
+  debugInfo('历史轮数', history?.length || 0)
+  logger.info(`[chat] body keys: ${Object.keys(req.body).join(',')}, history type: ${typeof history}, isArray: ${Array.isArray(history)}`)
+  if (Array.isArray(history) && history.length > 0) {
+    logger.info(`[chat] history[0]: role=${history[0]?.role} content=${String(history[0]?.content || '').slice(0, 30)}`)
+  }
 
   // 路由判定
   const route = routeQuery(question)
@@ -160,9 +168,11 @@ export async function askStream(req: Request, res: Response): Promise<void> {
       score: r.score,
     }))
 
-    // 只展示相似度最高的文档
-    const topDoc = filtered[0]
-    const docs = topDoc ? [{ id: topDoc.documentId, title: topDoc.documentTitle }] : []
+    const seen = new Set<number>()
+    const docs = filtered
+      .filter(r => { if (seen.has(r.documentId)) return false; seen.add(r.documentId); return true })
+      .slice(0, 3)
+      .map(r => ({ id: r.documentId, title: r.documentTitle }))
 
     // ── LLM 流式生成 ──
     // SSE 头
@@ -172,7 +182,7 @@ export async function askStream(req: Request, res: Response): Promise<void> {
     res.flushHeaders()
 
     try {
-      const stream = askDocumentStream(question, chunks, req.body.thinking === true)
+      const stream = askDocumentStream(question, chunks, req.body.thinking === true, req.body.history)
 
       // 先发 docs
       res.write(`data: ${JSON.stringify({ type: 'docs', docs })}\n\n`)

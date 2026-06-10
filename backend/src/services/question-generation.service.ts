@@ -26,7 +26,7 @@ async function retry429<T>(fn: () => Promise<T>, label: string): Promise<T> {
 }
 
 const generationLlm = new ChatOpenAI({
-  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-chat',
+  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-v3.2',
   temperature: 0.3,
   maxTokens: 4096,
   apiKey: process.env.MIMO_API_KEY || '',

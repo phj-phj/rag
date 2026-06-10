@@ -192,7 +192,9 @@ async function handleAsk() {
 
   try {
     console.log('[stream] 开始请求:', q)
-    const body = await askStream(q, thinking.value).catch((e: Error) => {
+    const history = messages.value.slice(0, -1).map(m => ({ role: m.role, content: m.content }))
+    console.log('[ChatView] messages总数:', messages.value.length, 'history条数:', history.length)
+    const body = await askStream(q, thinking.value, history).catch((e: Error) => {
       throw new Error(`连接失败: ${e.message}`)
     })
 

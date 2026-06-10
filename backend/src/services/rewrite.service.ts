@@ -5,7 +5,7 @@ const logger = createModuleLogger('rewrite')
 
 const BASE_URL = process.env.MIMO_BASE_URL || 'https://api.deepseek.com/v1'
 const API_KEY = process.env.MIMO_API_KEY || ''
-const MODEL = 'deepseek-chat'
+const MODEL = 'deepseek-v3.2'
 
 export async function rewriteQuery(question: string): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
