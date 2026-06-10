@@ -826,3 +826,62 @@ cp /var/www/papier/deploy/nginx.conf /etc/nginx/sites-available/papier
 nginx -t && systemctl reload nginx
 cd /var/www/papier && pm2 start deploy/ecosystem.config.js && pm2 save
 ```
+
+## 2026-06-10
+
+### AI 助手多轮对话记忆
+
+- **前端**（`ChatView.vue` + `api/chat.ts`）：发请求时从 `messages` 数组提取完整 Q&A 历史，放入 body 的 `history` 字段
+- **后端**（`chat.controller.ts` + `chat.service.ts`）：`buildMessages()` 新增 `history` 参数，拼成多轮 messages 发给 LLM
+- **根因修复**：Zod `askSchema` 只有 `question` 和 `documentId`，`validate()` 中间件用 `safeParse` 替换 `req.body`，`history` 和 `thinking` 被静默丢弃。加字段到 schema 修复
+- **Docker 前端缓存问题**：`docker compose build --no-cache` 需搭配 `docker builder prune -f` 才能真正清除缓存。`docker compose down && docker compose up -d --build` 不够
+
+### 对话历史相关性筛选
+
+- **`filterHistory()`**（`chat.service.ts`）：发送精简 prompt 给 LLM，判断哪些历史 Q&A 与当前问题相关。只传问题文本（不传答案），LLM 返回序号如"1,3"
+- **筛选 prompt**：详细指令教 LLM 判断相关性、识别元问题。筛选失败兜底返回全部历史
+- **日志透视**：`[chat] 历史筛选: 3组 → 结果: 1,2` `[chat] 保留 2/3 组: 1,2`
+- **效果验证**：问"事件循环"时 3 组历史保留 2 组（筛掉不相关的），问"react和vue使用场景"时保留 1,2 组（筛掉事件循环）
+
+### AI 智能路由：一次 LLM 调用判断三条路
+
+- **`routeWithLLM()`**（`chat.service.ts`）：替代 `classifyIntent`（关键词匹配）+ `thinkWithHistory`（独立思考）两步为一次 LLM 调用
+- **三路分发**：`SQL`（数据统计）→ Text2SQL 执行 → 返回 / `DOCS`（需查文档）→ RAG / 直接回答（元问题/对话本身）
+- **执行顺序**：Text2SQL → 思考 → RAG，SQL 优先避免被思考误判
+- **流式 SSE 统一**：SQL 和 direct 路径也走 SSE 格式（`res.json` 切换到 `res.write` + SSE headers），前端 `askStream` 不再收到 JSON 解析失败
+
+### 题目提取 Prompt v3：质量标准
+
+**问题**：旧 prompt "题干原样保留" → 提取结果含大量不合格的题——口语注释（"(这我上哪知道了)"、"(疯了吧问这个)"）、代指不明（"为什么会这样呢"、"怎么优化这些指标"）、无对象/无问号（"技术发展趋势看法"、"应用场景"）
+
+**新版规则**：
+1. 总原则：每道题自问"单独拿出来，没看过原文的人能看懂吗？"，看不懂直接丢弃
+2. 所指对象清晰：不能有依赖上下文的指代词（"这个""这种""这样""它""你项目"等）
+3. 疑问要求明确：必须以问号（？）结尾，提问意图清楚
+4. 题干必须完整：不能截断，不能有未闭合括号
+5. 两个不合格例子（❌）+ 一个合格例子（✅），LLM 对照学习
+
+**效果**（同文档前后对比）：
+- 带括号口语注释：12 道 → **0**
+- 无对象/无问号：8 道 → **0**
+- 题干截断：2 道 → **0**
+- 总题数：114 → 101（少 13 道，全是该丢的）
+
+### Text2SQL 密码安全修复
+
+- **问题**：问"数据库里有哪些用户"时返回了 password 哈希值
+- **修复**：
+  - SQL prompt 新增"禁止查询 Users 表的 password 字段"
+  - 运行时兜底：查询结果中如有 `password` 字段，force 删除后返回
+
+### 其他优化
+
+- **SYSTEM_PROMPT 放宽**：回答从"3-5 句话"改为"3-8 句话，详细完整"
+- **模型默认值统一**：6 个文件中 `deepseek-chat` → `deepseek-v3.2`
+- **路由守卫时序修复**：`main.ts` 中 `app.use(router)` + `app.mount('#app')` 移入 `initAuth().then()` 回调，修复刷新页面跳转登录
+- **`.env` 加 `MIMO_TRAIN_MODEL`**：Docker 容器中提取/预生成全部失败，根因是训练模型未设置环境变量
+
+### 已提交
+
+- `f29bad4` feat: AI 智能路由 + 对话历史筛选 + 多轮对话记忆 (3 文件, 117+ 15-)
+- `ac2be1b` feat: AI 助手多轮对话记忆 + 历史相关性筛选 (9 文件, 130+ 30-)
