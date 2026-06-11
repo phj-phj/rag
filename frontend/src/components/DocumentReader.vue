@@ -231,7 +231,7 @@ import * as pdfjsLib from 'pdfjs-dist'
 import type { DocItem } from '../types/api'
 
 // ── PDF Worker 调试 ──
-const WORKER_PATH = '/pdf.worker.mjs'
+const WORKER_PATH = '/pdf.worker.js'
 function logPdf(msg: string, detail?: any) {
   const ts = new Date().toISOString().slice(11, 23)
   const prefix = `[PDF ${ts}]`
@@ -244,16 +244,6 @@ function logPdf(msg: string, detail?: any) {
 logPdf('worker 路径:', WORKER_PATH)
 logPdf('当前 origin:', window.location.origin)
 logPdf('worker 完整 URL:', window.location.origin + WORKER_PATH)
-
-// pdfjs-dist 5.x 依赖 Chrome 专有的 Map.prototype.getOrInsertComputed
-if (!(Map.prototype as unknown as Record<string, unknown>).getOrInsertComputed) {
-  ;(Map.prototype as unknown as Record<string, unknown>).getOrInsertComputed = function (key: unknown, compute: () => unknown) {
-    if (this.has(key)) return this.get(key)
-    const value = compute()
-    this.set(key, value)
-    return value
-  }
-}
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_PATH
 
@@ -367,12 +357,7 @@ async function renderAllPages() {
       canvas.style.width = cssW + 'px'
       canvas.style.height = cssH + 'px'
 
-      const num = document.createElement('span')
-      num.className = 'pdf-page-num'
-      num.textContent = String(i)
-
       wrapper.appendChild(canvas)
-      wrapper.appendChild(num)
       container.appendChild(wrapper)
 
       const ctx = canvas.getContext('2d')
@@ -719,13 +704,6 @@ onBeforeUnmount(() => {
 .pdf-page-wrapper canvas {
   max-width: 100%;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-}
-.pdf-page-num {
-  display: block;
-  text-align: center;
-  margin-top: 4px;
-  font-size: 0.75rem;
-  color: #b0a89c;
 }
 
 /* ── PDF Native Link ── */

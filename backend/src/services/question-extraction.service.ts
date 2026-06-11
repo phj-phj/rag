@@ -8,7 +8,7 @@ const logger = createModuleLogger('question-extraction')
 async function retry429<T>(fn: () => Promise<T>, label: string): Promise<T> {
   for (let i = 0; i < 5; i++) {
     try { return await fn() }
-    catch (e: any) {
+    catch (e: any) { 
       if (e?.status === 429 || e?.lc_error_code === 'MODEL_RATE_LIMIT') {
         await new Promise(r => setTimeout(r, (i + 1) * 2000))
         continue

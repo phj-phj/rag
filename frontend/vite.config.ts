@@ -8,13 +8,13 @@ function copyPdfWorker(): Plugin {
   return {
     name: 'copy-pdf-worker',
     closeBundle() {
-      const src = path.resolve(__dirname, 'node_modules/pdfjs-dist/build/pdf.worker.mjs')
+      const src = path.resolve(__dirname, 'node_modules/pdfjs-dist/build/pdf.worker.js')
       const publicDir = path.resolve(__dirname, 'public')
-      const dest = path.join(publicDir, 'pdf.worker.mjs')
+      const dest = path.join(publicDir, 'pdf.worker.js')
       if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true })
       if (fs.existsSync(src)) {
         fs.copyFileSync(src, dest)
-        console.log('[pdf-worker] copied to public/pdf.worker.mjs')
+        console.log('[pdf-worker] copied to public/pdf.worker.js')
       } else {
         console.warn('[pdf-worker] source not found:', src)
       }
