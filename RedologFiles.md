@@ -885,3 +885,58 @@ cd /var/www/papier && pm2 start deploy/ecosystem.config.js && pm2 save
 
 - `f29bad4` feat: AI 智能路由 + 对话历史筛选 + 多轮对话记忆 (3 文件, 117+ 15-)
 - `ac2be1b` feat: AI 助手多轮对话记忆 + 历史相关性筛选 (9 文件, 130+ 30-)
+
+## 2026-06-11
+
+### PDF 移动端兼容
+
+**问题**：pdfjs-dist 6.x 在移动端（iOS Safari、Android WebView）无法渲染 PDF，根因是 6.x 依赖 ESM Worker（`.mjs`）、`Array.prototype.at()`、`Map.prototype.getOrInsertComputed` 等现代 API，老移动浏览器不支持。
+
+**尝试过的方案**（均失败）：
+- `@okkkde/pdfjs-dist`（社区 fork）— 不行
+- Vite `build.target: es2020` — Worker 不受 Vite 控制，不生效
+- `@vitejs/plugin-legacy` — 与 Vite 5 版本不兼容，babel 报错
+- `core-js/actual` 全量 polyfill — 干扰 pdfjs-dist，getDocument 报错
+- 手动 `Array.at()` polyfill — 只解决一个 API，还有其他兼容问题
+- `<iframe>` 移动端降级 — 体验差，用户不接受
+
+**最终方案**：降级到 `pdfjs-dist@3.11.174`
+- 3.x 使用传统 Worker 脚本（`.js`），不使用 ESM Worker
+- API 完全兼容（`getDocument`、`page.render`、`GlobalWorkerOptions.workerSrc` 完全一样）
+- 删除 `getOrInsertComputed` polyfill（3.x 不需要）
+- DocumentReader bundle 从 479KB → 339KB（-29%）
+
+**改动文件**：
+- `frontend/package.json`：`pdfjs-dist` 6.0.227 → 3.11.174
+- `frontend/vite.config.ts`：Worker 路径 `pdf.worker.mjs` → `pdf.worker.js`
+- `frontend/src/components/DocumentReader.vue`：Worker 路径 + 删 polyfill
+
+### PDF 页码标注移除
+
+- 项目在每页 Canvas 下方渲染了页码（`<span class="pdf-page-num">`），PDF 原文自带页码 → 双份数字
+- 删除 `num.className = 'pdf-page-num'` 创建代码和 CSS 样式块
+
+### 上传限制扩大
+
+- **单文件** 10MB → **50MB**（multer `fileSize`）
+- **总请求体** 10M → **200M**（nginx `client_max_body_size`，多文件叠加场景）
+- Express 5 的 `express.json()` 和 `express.urlencoded()` 设 `limit: '50mb'`
+- **multipart 请求绕过 body parser**：Express 5 的 json/urlencoded parser 可能误截 multipart 大请求 → 加 `content-type` 检测跳过
+- 前端 `UploadDialog.vue` 校验同步更新（50MB / 200M / 10 文件）
+- 前端 nginx 重建需单独执行：`docker compose build --no-cache frontend && docker compose up -d frontend`（后端重建时前端可能被缓存跳过）
+
+### 题目提取 Prompt v3.1
+
+加"独立可理解 + 无模糊指代"规则：
+- 指代词规则从名单改为通用——"替换指代词后题干不通顺的不合格"
+- 题干必须以问号结尾、不能截断
+- 加"题干独立可读"自检句
+
+### 预生成密度
+
+- `perChunk` 3 → **2**（每块生成 2 道题）
+
+### 已提交
+
+- `c52c80c` fix: pdfjs-dist 降级 3.x + 移除页码标注 + 提取 prompt 优化 (5 文件, 655+ 291-)
+- 分支：`dev/Android`
