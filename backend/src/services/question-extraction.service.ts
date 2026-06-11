@@ -28,7 +28,7 @@ import {
 
 
 const extractionLlm = new ChatOpenAI({
-  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-v3.2',
+  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-v4-flash',
   temperature: 0.1,
   maxTokens: 4096,
   apiKey: process.env.MIMO_API_KEY || '',
@@ -120,7 +120,9 @@ export async function extractQuestionsFromDocument(
         logger.warn(`[提取]   块${i + 1}: 未解析出有效题目 (LLM原始响应前200字: ${text.slice(0, 200)})`)
       }
     } catch (err) {
-      logger.error(`[提取]   块${i + 1} 失败:`, (err as Error).message)
+      const e = err as any
+      const detail = e?.constructor?.name + ' | ' + (e?.message || '') + ' | ' + (e?.response?.status || '') + ' | ' + JSON.stringify(Object.keys(e||{}))
+      logger.error(`[提取]   块${i + 1} 失败: ${detail}`)
     }
   }
 

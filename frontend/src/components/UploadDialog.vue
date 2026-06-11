@@ -23,7 +23,7 @@
             拖拽文件到此区域或点击选择
           </p>
           <p class="text-xs text-gray-300">
-            支持 PDF、Word、TXT、图片PNG/JPG/GIF/WebP/BMP（单文件最大 10MB，最多 10 个文件）
+            支持 PDF、Word、TXT、图片PNG/JPG/GIF/WebP/BMP（单文件最大 50MB，总大小不超过 200M，最多 10 个文件）
           </p>
         </div>
 
@@ -192,10 +192,10 @@ function addFiles(fileList: FileList | null) {
   }
 
   // Check each file size
-  const oversized = incoming.filter((f) => f.size > 10 * 1024 * 1024)
+  const oversized = incoming.filter((f) => f.size > 50 * 1024 * 1024)
   if (oversized.length > 0) {
     const names = oversized.map((f) => f.name).join('、')
-    error.value = `以下文件超过 10MB 限制：${names}`
+    error.value = `以下文件超过 50MB 限制：${names}`
     return
   }
 

@@ -37,7 +37,7 @@ PracticeRecords: id, user_id, question_id, status('mastered'/'review'), created_
 关系：Users.id = Documents.uploader_id, Categories.id = Documents.category_id, Documents.id = Document_Tags.document_id, Tags.id = Document_Tags.tag_id, Documents.id = Questions.source_document_id`
 
 const llm = new ChatOpenAI({
-  model: process.env.MIMO_MODEL || 'deepseek-v3.2',
+  model: process.env.MIMO_MODEL || 'deepseek-v4-flash',
   temperature: 0,
   maxTokens: 1024,
   apiKey: process.env.MIMO_API_KEY || '',

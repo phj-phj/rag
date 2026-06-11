@@ -23,10 +23,10 @@ async function retryLlm<T>(fn: () => Promise<T>, label: string): Promise<T> {
   throw new Error(`[${label}] 重试 5 次后仍失败`)
 }
 
-// AI 助手：默认 deepseek-v3.2（快），开启思考用 deepseek-reasoner
+// AI 助手：默认 deepseek-v4-flash（快），开启思考用 deepseek-reasoner
 function getChatLlm(enableThinking: boolean): ChatOpenAI {
   return new ChatOpenAI({
-    model: enableThinking ? 'deepseek-reasoner' : (process.env.MIMO_MODEL || 'deepseek-v3.2'),
+    model: enableThinking ? 'deepseek-reasoner' : (process.env.MIMO_MODEL || 'deepseek-v4-flash'),
     temperature: 0.3,
     maxTokens: enableThinking ? 65536 : 4096,
     apiKey: process.env.MIMO_API_KEY || '',
@@ -38,7 +38,7 @@ function getChatLlm(enableThinking: boolean): ChatOpenAI {
 
 // 训练专用模型（出题、提取、预生成）
 const trainingLlm = new ChatOpenAI({
-  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-v3.2',
+  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-v4-flash',
   temperature: 0.3,
   maxTokens: 4096,
   apiKey: process.env.MIMO_API_KEY || '',

@@ -940,3 +940,16 @@ cd /var/www/papier && pm2 start deploy/ecosystem.config.js && pm2 save
 
 - `c52c80c` fix: pdfjs-dist 降级 3.x + 移除页码标注 + 提取 prompt 优化 (5 文件, 655+ 291-)
 - 分支：`dev/Android`
+
+### 服务器部署：nginx + 上传 + embedding + AI 模型
+
+- **nginx root 路径修复**：部署 nginx.conf 后 `root` 指向 `/var/www/papier/dist`，实际路径为 `/var/www/papier/frontend/dist/` → SPA 回退循环导致 500
+- **上传 413 排查**：前端 Docker 重建未生效（容器时间戳 03:06 未更新）→ 单独 `docker compose build --no-cache frontend && docker compose up -d frontend`
+- **Embedding 限流修复**：智谱免费版 1 QPS 限流，`embedTexts()` 无重试 → 加 429 自动重试（5 次，间隔递增 2s/4s/6s/8s）
+- **预生成/提取全部失败**：错误消息为空（LangChain Error 不可枚举）→ 改为 `constructor.name + message + response.status + Object.keys(err)` 格式日志 → 最终发现 `deepseek-v3.2` 免费额度耗尽 403
+- **模型切换**：7 个文件 `deepseek-v3.2` → `deepseek-v4-flash`（`.env` + 6 个服务文件：chat、rewrite、text2sql、extraction、generation、embedding）
+- **`MIMO_TRAIN_MODEL` 配置**：服务器 `.env` 首次漏配，预生成 33 块全部瞬失败 0 题 → 补上 `MIMO_TRAIN_MODEL=deepseek-v4-flash`
+
+### 已提交
+
+- `1c77e22` docs: 开发日志更新至 2026-06-11

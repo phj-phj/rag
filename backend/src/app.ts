@@ -28,12 +28,25 @@ const app = express()
 const PORT = process.env.PORT || 3000
 
 app.use(requestId)
+app.use((req, _res, next) => {
+  if (req.path.includes('/api/documents') && req.method === 'POST') {
+    logger.info(`[debug] upload request: Content-Length=${req.headers['content-length']}, Content-Type=${req.headers['content-type']}`)
+  }
+  next()
+})
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
 }))
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+app.use((req, _res, next) => {
+  // multipart 上传绕过 Express body parser 的 size 检查
+  if (req.headers['content-type']?.startsWith('multipart/form-data')) return next()
+  express.json({ limit: '50mb' })(req, _res, next)
+})
+app.use((req, _res, next) => {
+  if (req.headers['content-type']?.startsWith('multipart/form-data')) return next()
+  express.urlencoded({ extended: true, limit: '50mb' })(req, _res, next)
+})
 app.use(cookieParser())
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec))

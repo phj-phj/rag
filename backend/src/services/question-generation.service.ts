@@ -26,7 +26,7 @@ async function retry429<T>(fn: () => Promise<T>, label: string): Promise<T> {
 }
 
 const generationLlm = new ChatOpenAI({
-  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-v3.2',
+  model: process.env.MIMO_TRAIN_MODEL || 'deepseek-v4-flash',
   temperature: 0.3,
   maxTokens: 4096,
   apiKey: process.env.MIMO_API_KEY || '',
@@ -67,7 +67,7 @@ export async function preGenerateQuestions(
 
   logger.info(`[预生成]   提取文本: ${fullText.length} 字符`)
   const chunks = splitForExtraction(fullText, 3000)
-  const perChunk = 3
+  const perChunk = 2
   logger.info(`[预生成]   切分为 ${chunks.length} 块 | 每块目标: ${perChunk}题 | 预计总量: ${perChunk * chunks.length}题`)
   let totalGenerated = 0
 
@@ -103,7 +103,9 @@ export async function preGenerateQuestions(
         logger.warn(`[预生成]   块${i + 1}: 未解析出有效题目 (LLM原始响应前200字: ${text.slice(0, 200)})`)
       }
     } catch (err) {
-      logger.error(`[预生成]   块${i + 1} 失败:`, (err as Error).message)
+      const e = err as any
+      const detail = e?.constructor?.name + ' | ' + (e?.message || '') + ' | ' + (e?.response?.status || '') + ' | ' + JSON.stringify(Object.keys(e||{}))
+      logger.error(`[预生成]   块${i + 1} 失败: ${detail}`)
     }
   }
 
