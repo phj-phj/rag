@@ -126,7 +126,17 @@ export interface RetrievedChunk {
   score: number
 }
 
-export async function retrieve(question: string, topK: number = 5): Promise<RetrievedChunk[]> {
+export interface RetrieveOptions {
+  disableFts?: boolean
+  disableRerank?: boolean
+  disableMmr?: boolean
+}
+
+export async function retrieve(
+  question: string,
+  topK: number = 5,
+  opts?: RetrieveOptions,
+): Promise<RetrievedChunk[]> {
   const conn = await getDB()
   const names = await conn.tableNames()
   if (!names.includes('chunks')) {
@@ -146,10 +156,13 @@ export async function retrieve(question: string, topK: number = 5): Promise<Retr
     // 向量检索
     (table.search(queryVec) as any).distanceType('cosine').limit(topK * CANDIDATE_FACTOR).toArray(),
     // 全文检索（BM25）
-    (table.search(question, 'fts' as any, 'content' as any) as any).limit(topK * CANDIDATE_FACTOR).toArray().catch((err: any) => {
-      logger.warn('[retrieval] FTS 检索失败，仅用向量:', err.message)
-      return []
-    }),
+    opts?.disableFts
+      ? Promise.resolve([])
+      : (table.search(question, 'fts' as any, 'content' as any) as any).limit(topK * CANDIDATE_FACTOR).toArray()
+        .catch((err: any) => {
+          logger.warn('[retrieval] FTS 检索失败，仅用向量:', err.message)
+          return []
+        }),
   ])
   debugInfo('双路检索耗时', `${Date.now() - searchStart}ms`)
   debugInfo('向量命中', vecResults.length)
@@ -192,17 +205,29 @@ export async function retrieve(question: string, topK: number = 5): Promise<Retr
     })
   }
 
-  // ── RRF 融合（FTS 与向量同权）──
-  const merged = rrfMerge(vecChunks, ftsChunks, topK * CANDIDATE_FACTOR)
+  // ── RRF 融合（动态加权）──
+  const merged = rrfMerge(vecChunks, ftsChunks, topK * CANDIDATE_FACTOR, vecResults, ftsResults, ftsResults.length)
   logger.info(`[retrieval] 双路粗召 ${vecChunks.length}+${ftsChunks.length} → RRF融合 ${merged.length}`)
 
   // ── Rerank 精排（粗召结果重新打分排序）──
-  const reranked = await rerank(question, merged, topK * 2)
-  logger.info(`[retrieval] Rerank精排: ${merged.length}条 → ${reranked.length}条`)
+  let reranked: (RetrievedChunk & { _rank?: number })[]
+  if (opts?.disableRerank) {
+    logger.info('[retrieval] Rerank 已禁用，跳过')
+    reranked = merged.map(m => ({ ...m, score: Math.min(1, m.score * 2) }))
+  } else {
+    reranked = await rerank(question, merged, topK * 2)
+    logger.info(`[retrieval] Rerank精排: ${merged.length}条 → ${reranked.length}条`)
+  }
 
   // MMR 多样性选择
-  const selected = mmrSelect(reranked, topK, 0.7)
-  logger.info(`[retrieval] MMR 精选结果:`)
+  let selected: RetrievedChunk[]
+  if (opts?.disableMmr) {
+    selected = reranked.slice(0, topK)
+    logger.info('[retrieval] MMR 已禁用，直接取Top:')
+  } else {
+    selected = mmrSelect(reranked, topK, 0.7)
+    logger.info(`[retrieval] MMR 精选结果:`)
+  }
   selected.forEach((c: RetrievedChunk, i: number) => {
     logger.info(`[retrieval]   ${i + 1}. [${c.documentTitle}] score=${c.score.toFixed(3)}`)
   })
@@ -213,18 +238,54 @@ export async function retrieve(question: string, topK: number = 5): Promise<Retr
 // ── RRF 双路融合 ──
 
 /**
+ * 根据两路粗召结果的分数分布，动态计算融合权重。
+ * 信号密度 = 高分结果占比，占比越高该路越可信。
+ */
+function computeDynamicWeights(
+  vecResults: any[],
+  ftsResults: any[],
+  ftsTotalCount: number,
+): { vecWeight: number; ftsWeight: number } {
+  if (vecResults.length === 0 && ftsResults.length === 0) return { vecWeight: 1, ftsWeight: 1 }
+
+  // 单路空 → 全权给另一路
+  if (vecResults.length === 0) return { vecWeight: 0, ftsWeight: 1 }
+  if (ftsResults.length === 0) return { vecWeight: 1, ftsWeight: 0 }
+
+  // 向量路信号密度：余弦相似度 > 0.3 的比例
+  const vecHigh = vecResults.filter(r => (1 - (r._distance ?? 0)) > 0.3).length
+  const vecDensity = vecHigh / vecResults.length
+
+  // FTS 路信号密度：数量越少 → 越精准（大量返回 = 低质量泛滥匹配）
+  const ftsDensity = Math.min(1, Math.max(0.1, 5 / Math.max(ftsTotalCount, 1)))
+
+  const total = vecDensity + ftsDensity
+  return { vecWeight: vecDensity / total, ftsWeight: ftsDensity / total }
+}
+
+/**
  * Reciprocal Rank Fusion：合并向量和 FTS 两路结果
- * RRF_score = Σ 1 / (k + rank_in_path)
+ * RRF_score = Σ weight / (k + rank_in_path)
  */
 export function rrfMerge(
   vec: (RetrievedChunk & { _rank?: number })[],
   fts: (RetrievedChunk & { _rank?: number })[],
   topK: number,
+  vecResultsRaw?: any[],
+  ftsResultsRaw?: any[],
+  ftsTotalCount?: number,
 ): RetrievedChunk[] {
+  const { vecWeight, ftsWeight } = computeDynamicWeights(
+    vecResultsRaw ?? vec,
+    ftsResultsRaw ?? fts,
+    ftsTotalCount ?? fts.length,
+  )
+  logger.info(`[retrieval] 动态权重: 向量=${vecWeight.toFixed(2)} FTS=${ftsWeight.toFixed(2)}`)
+
   const K = 60
   const scoreMap = new Map<number, { chunk: RetrievedChunk; rrf: number }>()
 
-  for (const [pathResults, weight] of [[vec, 1], [fts, 1]] as const) {
+  for (const [pathResults, weight] of [[vec, vecWeight], [fts, ftsWeight]] as const) {
     for (const c of pathResults) {
       const rank = c._rank ?? pathResults.length
       const rrf = (weight as number) / (K + rank)
