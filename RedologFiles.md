@@ -953,3 +953,50 @@ cd /var/www/papier && pm2 start deploy/ecosystem.config.js && pm2 save
 ### 已提交
 
 - `1c77e22` docs: 开发日志更新至 2026-06-11
+
+## 2026-06-12
+
+### RAG 检索评估体系
+
+- **新建** `backend/src/eval-retrieval.ts`：独立评估脚本，不改生产代码
+  - 10 个标注问题 + 预期文档 ID 的数据集
+  - 指标：Recall@K、MRR、Hit@K
+  - 消融对比模式：双路检索 vs 仅向量检索
+- **新建** `docs/RRF动态加权方案.md`：动态权重设计文档
+- **新建** `docs/RAG评估体系设计.md`：完整评估体系（检索 + 生成 + 消融 + CI）
+
+### Baseline 结果（7 个文档，10 个问题）
+
+```
+双路检索（向量+FTS）:  Recall@5=100%  MRR=0.7583  Hit@5=100%
+仅向量检索:            Recall@5=95%   MRR=0.8750  Hit@5=100%
+```
+
+**发现**：FTS 提高 Recall（+5%），但拖累 MRR（-0.12）。消融实验首次量化了这个差异。
+
+### RRF 动态加权
+
+- **`computeDynamicWeights()`**：根据两路信号密度自动调整融合权重
+  - 向量信号密度：余弦相似度 > 0.3 的高分占比
+  - FTS 信号密度：返回数量的倒数（越少越精准）
+  - FTS 弱时自动压到 0.11，FTS 不可用时归零
+- **`rrfMerge()`** 新增可选参数，向后兼容
+- **`retrieve()`** 新增 `RetrieveOptions`（`disableFts`/`disableRerank`/`disableMmr`），消融实验用
+- **效果**：MRR 0.7583 → **0.8750**（+15.4%），追平仅向量上限，Recall@5 保持 100%
+
+### Rerank API 调试
+
+- **问题**：10 次全失败，error message 为空
+- **排查过程**：LangChain error 不可枚举 → `JSON.stringify(err)` 返回 `{}` → 改为 `constructor.name + message + response.status + JSON.stringify(data)` → 发现 401 Incorrect API key
+- **根因**：DeepSeek 原生 key（`sk-7349fb8...`）调不了百炼 Rerank → 改回 SiliconFlow（`api.siliconflow.cn/v1`），用 EMBED_API_KEY
+- **额外修复**：ts-node import 时序问题 → Rerank API 配置从模块常量移到函数内
+
+### 文档
+
+- 更新 `RedologFiles.md`：6 月 11-12 日内容
+- 更新 `docs/RRF动态加权方案.md`：动态加权设计 + 3 阶段演进路径
+
+### 已提交
+
+- `7f2ab8b` feat: RAG 检索评估体系 + RRF 动态加权 (4 文件, 662+ 18-)
+- 分支：`dev/Android`
