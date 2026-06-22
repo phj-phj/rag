@@ -9,9 +9,9 @@ const app = createApp(App)
 const pinia = createPinia()
 
 app.use(pinia)
-app.use(router)
 
 const authStore = useAuthStore()
-authStore.initFromStorage()
-
-app.mount('#app')
+authStore.initAuth().then(() => {
+  app.use(router)
+  app.mount('#app')
+})

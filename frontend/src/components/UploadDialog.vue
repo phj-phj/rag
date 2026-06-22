@@ -23,7 +23,7 @@
             拖拽文件到此区域或点击选择
           </p>
           <p class="text-xs text-gray-300">
-            支持 PDF、Word、TXT、图片PNG/JPG/GIF/WebP/BMP（单文件最大 10MB，最多 10 个文件）
+            支持 PDF、Word、TXT、图片PNG/JPG/GIF/WebP/BMP（单文件最大 50MB，总大小不超过 200M，最多 10 个文件）
           </p>
         </div>
 
@@ -97,6 +97,23 @@
           </div>
         </div>
 
+        <!-- Progress Bar -->
+        <div
+          v-if="uploading"
+          class="mt-4"
+        >
+          <div class="flex items-center justify-between text-sm text-gray-500 mb-1">
+            <span>上传中...</span>
+            <span>{{ progress }}%</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2">
+            <div
+              class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              :style="{ width: progress + '%' }"
+            />
+          </div>
+        </div>
+
         <!-- Error -->
         <p
           v-if="error"
@@ -145,6 +162,7 @@ const categories = ref<OptionItem[]>([])
 const allTags = ref<OptionItem[]>([])
 const dragging = ref(false)
 const uploading = ref(false)
+const progress = ref(0)
 const error = ref('')
 
 function triggerFileInput() {
@@ -174,10 +192,10 @@ function addFiles(fileList: FileList | null) {
   }
 
   // Check each file size
-  const oversized = incoming.filter((f) => f.size > 10 * 1024 * 1024)
+  const oversized = incoming.filter((f) => f.size > 50 * 1024 * 1024)
   if (oversized.length > 0) {
     const names = oversized.map((f) => f.name).join('、')
-    error.value = `以下文件超过 10MB 限制：${names}`
+    error.value = `以下文件超过 50MB 限制：${names}`
     return
   }
 
@@ -192,6 +210,7 @@ function removeFile(idx: number) {
 async function handleUpload() {
   if (files.value.length === 0) return
   uploading.value = true
+  progress.value = 0
   error.value = ''
 
   const formData = new FormData()
@@ -204,12 +223,12 @@ async function handleUpload() {
 
   try {
     const { create } = await import('../api/document')
-    await create(formData)
+    await create(formData, (p) => { progress.value = p })
     files.value = []
     title.value = ''
     categoryId.value = null
     selectedTags.value = []
-    // Refresh parent
+    progress.value = 0
     window.location.reload()
   } catch (err: unknown) {
     error.value = (err as { response?: { data?: { message?: string } } }).response?.data?.message || '上传失败'

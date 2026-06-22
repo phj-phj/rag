@@ -114,10 +114,8 @@ async function handleRegister() {
 
   loading.value = true
   try {
-    const { data } = await register(username.value, password.value)
-    localStorage.setItem('token', data.token)
-    localStorage.setItem('user', JSON.stringify(data.user))
-    router.push('/')
+    await register(username.value, password.value)
+    // httpOnly cookie 已由后端自动设置，无需手动存储
     location.reload()
   } catch (err: unknown) {
     error.value = (err as { response?: { data?: { message?: string } } }).response?.data?.message || '注册失败，请重试'

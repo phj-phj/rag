@@ -10,6 +10,12 @@ const router = createRouter({
       component: () => import('../views/DocumentLibrary.vue'),
     },
     {
+      path: '/chat',
+      name: 'ChatView',
+      component: () => import('../views/ChatView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/recent',
       name: 'RecentDocs',
       component: () => import('../views/RecentDocs.vue'),
@@ -28,9 +34,21 @@ const router = createRouter({
       meta: { guest: true },
     },
     {
+      path: '/training',
+      name: 'DailyTraining',
+      component: () => import('../views/DailyTraining.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/docs/:id',
       name: 'DocViewer',
       component: () => import('../views/DocViewer.vue'),
+    },
+    {
+      path: '/collected',
+      name: 'CollectedQuestions',
+      component: () => import('../views/CollectedQuestions.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/admin',
@@ -50,13 +68,22 @@ const router = createRouter({
       component: () => import('../views/admin/UserManage.vue'),
       meta: { requiresAuth: true, requiresAdmin: true },
     },
+    {
+      path: '/admin/questions',
+      name: 'AdminQuestions',
+      component: () => import('../views/admin/QuestionBank.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
   ],
 })
 
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
 
+  console.log('[router] beforeEach', to.path, 'isAuthenticated=', authStore.isAuthenticated, 'token=', authStore.token)
+
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    console.warn('[router] 未登录，跳转 /login')
     next('/login')
     return
   }

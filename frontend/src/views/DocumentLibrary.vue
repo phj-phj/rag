@@ -1,173 +1,17 @@
 <template>
   <div class="document-library">
-    <!-- TOP BAR -->
-    <header class="topbar">
-      <div class="logo">
-        Pap<em>ier</em>
-      </div>
-      <button
-        class="hamburger"
-        @click="mobileMenuOpen = !mobileMenuOpen"
-      >
-        <span /><span /><span />
-      </button>
-      <ul class="top-nav">
-        <li>
-          <router-link
-            to="/"
-            class="active"
-          >
-            文档库
-          </router-link>
-        </li>
-        <li><a href="#">集合</a></li>
-        <li>
-          <router-link to="/recent">
-            最近
-          </router-link>
-        </li>
-        <li><a href="#">共享给我</a></li>
-        <li><a href="#">每日训练</a></li>
-      </ul>
-      <div class="topbar-right">
+    <AppTopbar activeRoute="home">
+      <template #controls>
         <div class="search-box">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          >
-            <circle
-              cx="11"
-              cy="11"
-              r="8"
-            />
-            <path d="M21 21l-4.35-4.35" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
           </svg>
-          <input
-            v-model="filters.title"
-            type="text"
-            placeholder="搜索文档..."
-            @input="debouncedSearch"
-          >
+          <input v-model="filters.title" type="text" placeholder="搜索文档..." @input="debouncedSearch" />
         </div>
-        <router-link
-          v-if="authStore.isAdmin"
-          to="/admin"
-          class="btn-admin"
-        >
-          后台管理
-        </router-link>
-        <button
-          v-if="authStore.isAuthenticated"
-          class="btn-upload"
-          @click="showUpload = true"
-        >
-          + 上传文档
-        </button>
-        <router-link
-          v-else
-          to="/login"
-          class="btn-upload"
-          style="text-decoration:none;"
-        >
-          登录
-        </router-link>
-        <div
-          v-if="authStore.user"
-          class="avatar-wrapper"
-        >
-          <div
-            class="avatar"
-            @click="showLogout = !showLogout"
-          >
-            {{ authStore.user.username[0].toUpperCase() }}
-          </div>
-          <Transition name="fade">
-            <div
-              v-if="showLogout"
-              class="avatar-dropdown"
-            >
-              <div class="dropdown-user">
-                <span class="dropdown-name">{{ authStore.user.username }}</span>
-                <span class="dropdown-role">{{ authStore.isAdmin ? '管理员' : '用户' }}</span>
-              </div>
-              <button
-                class="dropdown-item"
-                @click="handleLogout"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  class="dropdown-icon"
-                ><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line
-                  x1="21"
-                  y1="12"
-                  x2="9"
-                  y2="12"
-                /></svg>
-                退出登录
-              </button>
-            </div>
-          </Transition>
-        </div>
-      </div>
-    </header>
-
-    <!-- Mobile Nav Overlay -->
-    <Transition name="slide-down">
-      <div
-        v-if="mobileMenuOpen"
-        class="mobile-nav-overlay"
-        @click="mobileMenuOpen = false"
-      >
-        <nav
-          class="mobile-nav-panel"
-          @click.stop
-        >
-          <router-link
-            to="/"
-            class="mobile-nav-link"
-            @click="mobileMenuOpen = false"
-          >
-            文档库
-          </router-link>
-          <a
-            href="#"
-            class="mobile-nav-link"
-            @click="mobileMenuOpen = false"
-          >集合</a>
-          <router-link
-            to="/recent"
-            class="mobile-nav-link"
-            @click="mobileMenuOpen = false"
-          >
-            最近
-          </router-link>
-          <a
-            href="#"
-            class="mobile-nav-link"
-            @click="mobileMenuOpen = false"
-          >共享给我</a>
-          <a
-            href="#"
-            class="mobile-nav-link"
-            @click="mobileMenuOpen = false"
-          >每日训练</a>
-          <button
-            v-if="!authStore.isAuthenticated"
-            class="mobile-nav-link"
-            @click="mobileMenuOpen = false; $router.push('/login')"
-          >
-            登录
-          </button>
-        </nav>
-      </div>
-    </Transition>
+        <router-link v-if="authStore.isAdmin" to="/admin" class="btn-admin">后台管理</router-link>
+        <button v-if="authStore.isAuthenticated" class="btn-upload" @click="showUpload = true">+ 上传文档</button>
+      </template>
+    </AppTopbar>
 
     <!-- SIDEBAR -->
     <button
@@ -451,6 +295,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import AppTopbar from '../components/AppTopbar.vue'
 import { useAuthStore } from '../stores/auth'
 import { list as listDocs } from '../api/document'
 import * as favoriteApi from '../api/favorite'
@@ -460,10 +305,9 @@ import UploadDialog from '../components/UploadDialog.vue'
 const router = useRouter()
 const authStore = useAuthStore()
 
-interface DocItem { id: number; title: string; file_type: string; file_size: number; file_url?: string; created_at: string; uploader?: { username: string }; category?: { name: string }; tags?: { id: number; name: string }[]; isFavorited?: boolean }
-interface OptionItem { id: number; name: string }
-interface CategoryItem { id: number; name: string; docCount?: number }
-interface DashboardStats { totalDocs: number; totalCategories: number; totalUsers: number }
+import type { DocItem, OptionItem, DashboardStats } from '../types/api'
+
+interface CategoryItem extends OptionItem { docCount?: number }
 
 const documents = ref<DocItem[]>([])
 const categories = ref<CategoryItem[]>([])

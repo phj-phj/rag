@@ -1,8 +1,10 @@
 import { Request, Response } from 'express'
 import { Op } from 'sequelize'
 import bcrypt from 'bcryptjs'
-import { Document, Category, Tag, User } from '../models'
+import { Document, Category, Tag, User, Question } from '../models'
 import { deleteFile, getFileUrl } from '../services/file.service'
+import { deleteDocumentCascade } from '../services/document-cleanup.service'
+import { NotFoundError, BadRequestError } from '../utils/errors'
 
 function docToJson(doc: Document): Record<string, unknown> {
   const d = (doc.toJSON() as unknown) as Record<string, unknown>
@@ -69,9 +71,10 @@ export async function getStats(_req: Request, res: Response): Promise<void> {
 }
 
 export async function getDocuments(req: Request, res: Response): Promise<void> {
-  const page = Math.max(1, Number(req.query.page) || 1)
-  const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20))
-  const { title, category_id, tags } = req.query
+  const q = (req as any).query
+  const page = Math.max(1, Number(q.page) || 1)
+  const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 20))
+  const { title, category_id, tags } = q
 
   const where: Record<string, unknown> = {}
 
@@ -112,7 +115,7 @@ export async function getDocuments(req: Request, res: Response): Promise<void> {
   const { count, rows } = await Document.findAndCountAll({
     where,
     include,
-    order: [['updated_at', 'DESC']],
+    order: [['created_at', 'DESC']],
     limit: pageSize,
     offset: (page - 1) * pageSize,
     distinct: true,
@@ -124,8 +127,7 @@ export async function getDocuments(req: Request, res: Response): Promise<void> {
 export async function updateDocument(req: Request, res: Response): Promise<void> {
   const doc = await Document.findByPk(Number(req.params.id))
   if (!doc) {
-    res.status(404).json({ message: '文档不存在' })
-    return
+    throw new NotFoundError('文档不存在')
   }
 
   const { title, category_id, tags } = req.body
@@ -154,14 +156,12 @@ export async function updateDocument(req: Request, res: Response): Promise<void>
 export async function replaceDocumentFile(req: Request, res: Response): Promise<void> {
   const doc = await Document.findByPk(Number(req.params.id))
   if (!doc) {
-    res.status(404).json({ message: '文档不存在' })
-    return
+    throw new NotFoundError('文档不存在')
   }
 
   const file = req.file
   if (!file) {
-    res.status(400).json({ message: '请选择要替换的文件' })
-    return
+    throw new BadRequestError('请选择要替换的文件')
   }
 
   await deleteFile(doc.file_path)
@@ -185,11 +185,10 @@ export async function replaceDocumentFile(req: Request, res: Response): Promise<
 export async function deleteDocument(req: Request, res: Response): Promise<void> {
   const doc = await Document.findByPk(Number(req.params.id))
   if (!doc) {
-    res.status(404).json({ message: '文档不存在' })
-    return
+    throw new NotFoundError('文档不存在')
   }
 
-  await deleteFile(doc.file_path)
+  await deleteDocumentCascade(doc.id, doc.file_path)
   await doc.destroy()
 
   res.json({ message: '文档已删除' })
@@ -219,18 +218,55 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
 export async function updateUserPassword(req: Request, res: Response): Promise<void> {
   const user = await User.findByPk(Number(req.params.id))
   if (!user) {
-    res.status(404).json({ message: '用户不存在' })
-    return
+    throw new NotFoundError('用户不存在')
   }
 
   const { password } = req.body
-  if (!password || password.length < 6) {
-    res.status(400).json({ message: '密码长度不能少于6位' })
-    return
-  }
-
   user.password = await bcrypt.hash(password, 10)
   await user.save()
 
   res.json({ message: '密码已更新' })
+}
+
+// ── 题库管理 ──
+
+export async function getQuestions(req: Request, res: Response): Promise<void> {
+  const page = Math.max(1, Number(req.query.page) || 1)
+  const pageSize = Math.min(50, Math.max(1, Number(req.query.pageSize) || 20))
+  const keyword = req.query.keyword as string | undefined
+  const sourceType = req.query.source_type as string | undefined
+
+  const where: any = { source_type: ['extracted', 'ai_pregenerated'] }
+  if (sourceType && sourceType !== 'all') where.source_type = sourceType
+  if (keyword) {
+    where[Op.or] = [
+      { stem: { [Op.like]: `%${keyword}%` } },
+      { knowledge_point: { [Op.like]: `%${keyword}%` } },
+    ]
+  }
+
+  const { count, rows } = await Question.findAndCountAll({
+    where,
+    order: [['id', 'DESC']],
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  })
+
+  res.json({ items: rows, total: count, page, pageSize })
+}
+
+export async function deleteQuestion(req: Request, res: Response): Promise<void> {
+  const q = await Question.findByPk(Number(req.params.id))
+  if (!q) throw new NotFoundError('题目不存在')
+  await q.destroy()
+  res.json({ message: '题目已删除' })
+}
+
+export async function batchDeleteQuestions(req: Request, res: Response): Promise<void> {
+  const { ids } = req.body
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new BadRequestError('请提供要删除的题目ID列表')
+  }
+  const count = await Question.destroy({ where: { id: ids as number[] } })
+  res.json({ message: `已删除 ${count} 道题目`, count })
 }

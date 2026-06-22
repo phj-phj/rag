@@ -29,4 +29,12 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# 向量数据库
+lancedb_data/
+
+# 上传文件
+backend/uploads/
+
+# 编译输出
+backend/dist/
 

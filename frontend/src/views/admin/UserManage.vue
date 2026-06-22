@@ -30,6 +30,12 @@
               文档管理
             </router-link>
             <router-link
+              to="/admin/questions"
+              class="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              题库管理
+            </router-link>
+            <router-link
               to="/admin/users"
               class="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 rounded-lg"
             >
@@ -396,8 +402,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAdminStore } from '../../stores/admin'
 import { useAuthStore } from '../../stores/auth'
-
-interface UserItem { id: number; username: string; role: string; document_count: number; created_at: string }
+import type { UserItem } from '../../types/api'
 
 const router = useRouter()
 const adminStore = useAdminStore()
