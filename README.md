@@ -59,7 +59,8 @@ Papier 把普通的学习资料（PDF、Word、笔记、网页摘录）自动变
 
 点击任意文档进入阅读模式。PDF 文件直接全部展示，不会因为上下文的页数导致知识点分散，Word 和纯文本文件直接渲染在页面上。右侧可以看到文档的基本信息（上传者、日期、大小）。
 
-> 此处放入阅读器截图
+<img width="1918" height="977" alt="image" src="https://github.com/user-attachments/assets/7d3c4426-1481-4efc-8d24-92a008a5db11" />
+
 
 ### AI 问答助手
 
