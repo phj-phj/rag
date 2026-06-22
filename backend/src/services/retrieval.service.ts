@@ -3,6 +3,8 @@ import path from 'path'
 import { embedQuery } from './embedding.service'
 import { rerank } from './rerank.service'
 import Document from '../models/Document'
+import DocumentChunk from '../models/DocumentChunk'
+import { Op } from 'sequelize'
 import { debugInfo } from '../utils/debug'
 import { createModuleLogger } from '../utils/logger'
 
@@ -130,6 +132,7 @@ export interface RetrieveOptions {
   disableFts?: boolean
   disableRerank?: boolean
   disableMmr?: boolean
+  expandContext?: boolean
 }
 
 export async function retrieve(
@@ -232,7 +235,69 @@ export async function retrieve(
     logger.info(`[retrieval]   ${i + 1}. [${c.documentTitle}] score=${c.score.toFixed(3)}`)
   })
 
+  // 上下文展开：短 chunk 补齐前后邻居
+  if (opts?.expandContext !== false) {
+    selected = await expandContext(selected)
+  }
+
   return selected
+}
+
+// ── 上下文展开 ──
+
+const MIN_CHUNK_CHARS = 200
+
+async function expandContext(chunks: RetrievedChunk[]): Promise<RetrievedChunk[]> {
+  const expanded: RetrievedChunk[] = []
+
+  for (const c of chunks) {
+    if (c.content.length >= MIN_CHUNK_CHARS) {
+      expanded.push(c)
+      continue
+    }
+
+    try {
+      // 用范围查询取相邻 chunk
+      const current = await DocumentChunk.findOne({
+        where: { id: c.chunkId },
+        attributes: ['chunk_index'],
+      })
+      if (!current) { expanded.push(c); continue }
+
+      const neighbors = await DocumentChunk.findAll({
+        where: {
+          document_id: c.documentId,
+          chunk_index: {
+            [Op.between]: [
+              current.chunk_index - 1,
+              current.chunk_index + 1,
+            ],
+          },
+        },
+        order: [['chunk_index', 'ASC']],
+        attributes: ['content', 'chunk_index'],
+        raw: true,
+      })
+
+      const parts: string[] = []
+      for (const n of neighbors) {
+        if ((n as any).chunk_index === current.chunk_index) {
+          parts.push(c.content)
+        } else {
+          parts.push((n as any).content)
+        }
+      }
+
+      c.content = parts.join('\n')
+      logger.info(`[retrieval] 展开 chunk ${c.chunkId} (${current.chunk_index}): ±1 邻居, ${parts.length} 段`)
+    } catch (err) {
+      logger.warn(`[retrieval] 展开 chunk ${c.chunkId} 失败:`, (err as Error).message)
+    }
+
+    expanded.push(c)
+  }
+
+  return expanded
 }
 
 // ── RRF 双路融合 ──

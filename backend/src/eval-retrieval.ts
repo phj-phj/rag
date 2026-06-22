@@ -8,58 +8,63 @@ interface EvalItem {
   id: string
   question: string
   relevantDocIds: number[]
+  expectedKeyPhrases: string[]
 }
 
-const dataset: EvalItem[] = [
+export const dataset: EvalItem[] = [
   {
     id: 'q01',
     question: 'Go 语言的 GMP 调度模型是什么？',
     relevantDocIds: [26],
+    expectedKeyPhrases: ['G 代表 goroutine', 'M 代表 Machine 线程', 'P 代表 Processor', 'GOMAXPROCS 控制 P', '本地队列和全局队列', 'work stealing'],
   },
   {
     id: 'q02',
     question: 'Go 的垃圾回收机制是怎么工作的？',
     relevantDocIds: [26],
+    expectedKeyPhrases: ['三色标记法', '并发标记和清扫', '写屏障', 'STW 只在根扫描阶段', '触发 GC 的条件'],
   },
   {
     id: 'q03',
     question: 'MySQL 的索引类型有哪些？B+树为什么适合做索引？',
     relevantDocIds: [28],
+    expectedKeyPhrases: ['主键索引和二级索引', 'B+树叶子节点形成有序链表', 'B+树非叶子节点只存索引', '范围查询高效', 'Hash 索引等值查询快但不支持范围'],
   },
   {
     id: 'q04',
     question: 'Redis 的持久化机制 RDB 和 AOF 有什么区别？',
     relevantDocIds: [28],
+    expectedKeyPhrases: ['RDB 是快照方式', 'AOF 是追加写命令', 'RDB 恢复快但可能丢失数据', 'AOF 数据更完整但文件更大', '混合持久化方式'],
   },
   {
     id: 'q05',
     question: '后端系统中如何处理高并发请求？',
-    relevantDocIds: [30],
+    relevantDocIds: [29, 30],
+    expectedKeyPhrases: ['负载均衡', '缓存策略', '数据库连接池', '异步处理和消息队列', '限流和降级'],
   },
   {
     id: 'q06',
-    question: '什么是微服务架构？有什么优缺点？',
-    relevantDocIds: [30],
+    question: '自动化测试框架怎么设计？',
+    relevantDocIds: [29],
+    expectedKeyPhrases: ['测试分层', '用例管理', '数据驱动', '断言机制', 'CI/CD 集成'],
   },
   {
     id: 'q07',
-    question: '自动化测试框架怎么设计？',
-    relevantDocIds: [29],
+    question: 'Linux 中如何查找某个文件？常用的文件操作命令有哪些？',
+    relevantDocIds: [32],
+    expectedKeyPhrases: ['find 命令', 'grep 文本搜索', 'ls 列出文件', 'cp/mv/rm 操作', '权限管理 chmod'],
   },
   {
     id: 'q08',
-    question: 'Linux 中如何查找某个文件？常用的文件操作命令有哪些？',
+    question: 'Git 中 rebase 和 merge 的区别是什么？',
     relevantDocIds: [32],
+    expectedKeyPhrases: ['merge 保留分支历史', 'rebase 线性化历史', 'rebase 改写提交', '冲突处理方式不同', '公共分支不要 rebase'],
   },
   {
     id: 'q09',
-    question: 'Git 中 rebase 和 merge 的区别是什么？',
-    relevantDocIds: [32],
-  },
-  {
-    id: 'q10',
-    question: 'Go 语言中怎么使用 Redis？',
-    relevantDocIds: [26, 28],
+    question: '在项目中怎么使用 Redis？有哪些常见的最佳实践？',
+    relevantDocIds: [28],
+    expectedKeyPhrases: ['连接池配置', '基本命令使用', 'Pipeline 批量操作', 'Pub/Sub 发布订阅', '缓存穿透/击穿/雪崩'],
   },
 ]
 
@@ -308,4 +313,4 @@ async function main() {
   process.exit(0)
 }
 
-main()
+if (require.main === module) main()

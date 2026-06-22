@@ -1000,3 +1000,78 @@ cd /var/www/papier && pm2 start deploy/ecosystem.config.js && pm2 save
 
 - `7f2ab8b` feat: RAG 检索评估体系 + RRF 动态加权 (4 文件, 662+ 18-)
 - 分支：`dev/Android`
+
+## 2026-06-22
+
+### 生产环境 Bug 修复
+
+- **express-rate-limit `trust proxy` 报错**：服务器日志每请求抛出 `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`
+  - 根因：Nginx 设置了 `X-Forwarded-For` 头，但 Express 默认 `trust proxy: false`，rate-limit 检测到不一致抛错
+  - 修复：`app.ts` 加 `app.set('trust proxy', 1)`，信任第一层 Nginx 代理
+  - 后果：限流器此前可能将所有请求识别为同一 IP，超过阈值后全站 429
+
+### RAG 生成质量评估（LLM-as-Judge）
+
+- **新建** `docs/RAG生成质量评估方案.md`：三维评分体系（忠实度/相关性/完整性）+ 三象限诊断
+- **新建** `backend/src/evaluate-generation.ts`：
+  - 逐 query 走完整 RAG 链路（检索 → 生成 → Judge 评分）
+  - Judge 用 DeepSeek `temperature=0`，逐断言对照 chunk 原文验证
+  - 三象限诊断：RAG 有效 / LLM 编造 / 检索+生成双输
+- **新建** `backend/src/evaluate-pregeneration.ts`：
+  - 评估对象是预生成题目（`source_type='ai_pregenerated'`），非 AI 助手聊天
+  - 从 MySQL Questions 表查题 → 找回源文档原文 → Judge 逐题验证忠实度
+- **`eval-retrieval.ts` 数据集升级**：加 `expectedKeyPhrases` 字段，每 query 标注 5-6 个关键信息点
+
+### 检索质量修复
+
+- **覆盖度闸门**（`chat.controller.ts`）：
+  - `checkCoverage()` 双信号判断 chunk 是否足够支撑回答
+  - 信号 1：总文本量 < 300 字 → 拦截
+  - 信号 2：最高分 < 0.15 → 拦截
+  - 双信号均不达标 → 返回"未找到相关信息"，不调 LLM
+  - 同时覆盖 `ask()` 和 `askStream()` 两个入口
+- **上下文展开**（`retrieval.service.ts`）：
+  - `expandContext()`：chunk < 200 字时，查 `Document_Chunks` 表取同文档 `chunk_index ± 1` 邻居
+  - 用 Sequelize `Op.between` 范围查询，按 `chunk_index ASC` 排序拼接
+  - `RetrieveOptions` 新增 `expandContext` 开关，默认启用
+- **新建** `docs/检索质量修复方案.md`：覆盖度闸门 + 上下文展开 + 句子平均长度信号设计
+
+### 提示词反幻觉改进
+
+- **AI 助手**（`chat.service.ts` `SYSTEM_PROMPT`）：
+  - 旧："根据以下参考资料回答用户问题" → 新："只根据以下参考资料回答，不要使用任何外部知识"
+  - 新增 5 条规则：逐事实原文依据 / 概念无展开时如实描述 / 信息不足时坦诚说明 / 完全不包含时拒答 / 不编造不猜测
+- **预生成出题**（`question-generation.service.ts` `GENERATION_PROMPT`）：
+  - 认知层改进："你是一个只能看到以下参考资料的人。你没有学过任何编程语言和数据库"
+  - 新增 3 句话连续展开门槛：概念只有一句话提及则跳过不出题
+- **忠实度闸门**（`question-generation.service.ts`）：
+  - `judgeFaithfulness()`：逐题验证答案 vs 源 chunk，faithfulness < 4 的题不入库
+  - Judge 用 `deepseek-v4-flash` + `temperature=0`，挂了默认放行避免 API 抖动丢题
+
+### 评估结果
+
+**AI 助手问答**（提示词修改前后对比）：
+```
+                   修改前         修改后
+平均忠实度          4.1/5    →    4.9/5     (+20%)
+幻觉率              56%      →    11%       (-45pp)
+综合得分            57%      →    67%
+LLM 编造           3/9       →    0/9       (清零)
+```
+
+**预生成题目质量**：
+```
+平均忠实度: 3.4/5  优质 (≥4): 6/10 (60%)  不合格 (<3): 4/10 (40%)
+不合格全集中在 doc 28（MySQL+Redis 面试题），文档只提概念名无展开，LLM 用内置知识补全
+下次预生成运行时闸门将自动过滤此类题
+```
+
+### 文档
+
+- `docs/RAG评估体系设计.md` — 完整评估体系（标注数据集 + 检索指标 + 生成 Judge + 消融实验 + CI）
+- `docs/RAG评估结果分析.md` — 两轮实测数据对比（Rerank 404→401、FTS 负优化、动态加权修复）
+- `docs/RRF动态加权方案.md` — 信号密度推断 + 3 阶段演进路径
+- `docs/RAG生成质量评估方案.md` — LLM-as-Judge 三维评分 + 三象限诊断
+- `docs/检索质量修复方案.md` — 覆盖度闸门 + 上下文展开
+
+### 已提交

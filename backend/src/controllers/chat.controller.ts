@@ -11,6 +11,31 @@ import { createModuleLogger } from '../utils/logger'
 
 const logger = createModuleLogger('chat')
 
+// ── 覆盖度闸门：chunk 不足以支撑回答时不调 LLM ──
+
+interface CoverageResult {
+  sufficient: boolean
+  reason: string
+}
+
+function checkCoverage(
+  chunks: { content: string; score: number }[],
+): CoverageResult {
+  // 信号 1：总文本量
+  const totalText = chunks.reduce((s, c) => s + c.content.length, 0)
+  if (totalText < 300) {
+    return { sufficient: false, reason: `chunk 总文本量 ${totalText} 字 < 300` }
+  }
+
+  // 信号 2：top chunk 质量
+  const topScore = chunks[0]?.score ?? 0
+  if (topScore < 0.15) {
+    return { sufficient: false, reason: `最高分 ${topScore.toFixed(3)} < 0.15` }
+  }
+
+  return { sufficient: true, reason: 'ok' }
+}
+
 const TRAINING_PROMPT = `你是 Papier 出题助手。根据以下参考资料生成题目。
 
 要求：
@@ -69,6 +94,21 @@ export async function ask(req: Request, res: Response): Promise<void> {
 
     if (filtered.length === 0) {
       debugInfo('结果', '无相关片段')
+      debugTiming()
+      res.json({
+        answer: '当前文档库中未找到相关信息。请尝试更换关键词或上传相关文档。',
+        model: 'retrieval',
+        docs: [],
+      })
+      return
+    }
+
+    // 覆盖度闸门
+    const coverage = checkCoverage(
+      filtered.map(r => ({ content: r.content, score: r.score })),
+    )
+    if (!coverage.sufficient) {
+      logger.info(`[chat] 覆盖度不足: ${coverage.reason}`)
       debugTiming()
       res.json({
         answer: '当前文档库中未找到相关信息。请尝试更换关键词或上传相关文档。',
@@ -172,6 +212,21 @@ export async function askStream(req: Request, res: Response): Promise<void> {
 
     if (filtered.length === 0) {
       debugInfo('结果', '无相关片段，不调用LLM')
+      debugTiming()
+      res.json({
+        answer: '当前文档库中未找到相关信息。请尝试更换关键词或上传相关文档。',
+        model: 'retrieval',
+        docs: [],
+      })
+      return
+    }
+
+    // 覆盖度闸门
+    const coverage = checkCoverage(
+      filtered.map((r: any) => ({ content: r.content, score: r.score })),
+    )
+    if (!coverage.sufficient) {
+      logger.info(`[chat-stream] 覆盖度不足: ${coverage.reason}`)
       debugTiming()
       res.json({
         answer: '当前文档库中未找到相关信息。请尝试更换关键词或上传相关文档。',
