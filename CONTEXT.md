@@ -1,156 +1,215 @@
-# Papier — 团队文档管理与 AI 学习平台
-
-![](https://img.shields.io/badge/Vue-3-4fc08d?logo=vue.js) ![](https://img.shields.io/badge/Node-20-339933?logo=node.js) ![](https://img.shields.io/badge/MySQL-8.0-4479a1?logo=mysql) ![](https://img.shields.io/badge/Docker-ready-2496ed?logo=docker)
-
-Papier 是一个前后端分离的文档管理平台，核心在**文档上传 → 自动解析 → AI 生成题目 → 每日练习**这条链路。把团队资料变成可检索、可测验的知识库。
-
----
-
-## 核心功能
-
-### 文档管理
-- 支持 PDF / Word / TXT / 图片上传，单次最多 10 个文件
-- 自动提取文件内容（`unpdf` 解析 PDF、`jszip` 解析 DOCX）
-- 多维度筛选：标题模糊搜索、分类、标签、上传者
-- 收藏系统、后台管理（文档 CRUD、用户管理、统计仪表盘）
-
-### AI 检索问答（RAG）
-- 文档上传后自动语义切块、向量化（embedding-2 1024维）、索引入 LanceDB
-- 双路检索：向量相似度 + BM25 全文索引 → RRF 融合 → Rerank 精排 → MMR 去重
-- **Text2SQL**：自然语言查 MySQL 元数据（"admin 上传了多少文档"）
-- 流式输出（SSE），支持深度思考模式
-
-### 题目提取与训练
-- 文档自动分类（题库文档 vs 知识文档）
-- 题库文档：LLM 提取题目 + 答案
-- 知识文档：LLM 根据内容预生成论述题
-- AI 训练页面：从题库抽题练习，已掌握的题目自动排除
-- 已收录页面：选题、筛选（全部/已掌握/需复习）、难度投票（众数算法）
-
-### 安全
-- JWT httpOnly Cookie 鉴权，防 XSS 令牌窃取
-- RBAC 角色控制（user / admin）
-- AI 助手、训练、题库页面均需登录
-
----
+# Papier — 把文档变成学习工具
 
 ## 技术栈
 
-| 层 | 技术 |
-|---|---|
-| 前端 | Vue 3 (Composition API) · TypeScript · Vite · Pinia · Vue Router · Tailwind CSS · Three.js · ECharts |
-| 后端 | Node.js · Express · TypeScript · Sequelize ORM · Zod |
-| 数据库 | MySQL 8.0（结构化数据）· LanceDB（向量检索） |
-| AI | DeepSeek（LLM）· 智谱 embedding-2（向量化）· SiliconFlow（Rerank） |
-| 部署 | Docker Compose · Nginx · pm2 |
+![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![Tailwind_CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white)
+![Three.js](https://img.shields.io/badge/Three.js-000000?logo=threedotjs&logoColor=white)
+![ECharts](https://img.shields.io/badge/ECharts-AA344D?logo=apacheecharts&logoColor=white)
+![Pinia](https://img.shields.io/badge/Pinia-FFD859?logo=pinia&logoColor=black)
+<br>
+![Node.js](https://img.shields.io/badge/Node.js-5FA04E?logo=nodedotjs&logoColor=white)
+![Express](https://img.shields.io/badge/Express-000000?logo=express&logoColor=white)
+![Sequelize](https://img.shields.io/badge/Sequelize-52B0E7?logo=sequelize&logoColor=white)
+<br>
+![MySQL](https://img.shields.io/badge/MySQL_8.0-4479A1?logo=mysql&logoColor=white)
+![LanceDB](https://img.shields.io/badge/LanceDB-向量检索-38B2AC)
+<br>
+![DeepSeek](https://img.shields.io/badge/DeepSeek-LLM-536DFE)
+![智谱](https://img.shields.io/badge/智谱-embedding--2-6C5CE7)
+![SiliconFlow](https://img.shields.io/badge/SiliconFlow-Rerank-F97316)
+<br>
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+![Nginx](https://img.shields.io/badge/Nginx-009639?logo=nginx&logoColor=white)
 
----
+## 这是什么
 
-## 快速开始
+Papier 把普通的学习资料（PDF、Word、笔记、网页摘录）自动变成练习题。
 
-### Docker（推荐）
+上传一份文档，它会自动读懂内容，然后帮你生成考试题。你可以直接在上面练题、记录掌握了哪些、筛选需要复习的。整个过程不需要人工出题。
 
-```bash
-git clone https://github.com/phj-phj/AI-web.git
-cd AI-web
-cp backend/.env.example backend/.env   # 编辑填入 API Key
-docker compose up -d
-```
+**适用场景**：面试备考、考证复习、课程学习、培训材料整理——只要是你需要从文档里学东西的场景，它都适用。
 
-浏览器打开 `http://localhost`。
+## 核心功能
 
-默认账号：`13691620597` / `qweasdzxc05811`（管理员），`user` / `user123`（普通用户）。
+### 上传和学习
 
-### 手动安装
+上传一个或多个文件（支持 PDF、Word、纯文本、图片），系统会自动读取文件内容，判断这是一份"题库"（本身就有问有答）还是一份"知识文档"（需要提炼考点）。
 
-详见 [SETUP.md](SETUP.md)。
+- 如果是题库文档：自动提取出里面的题目和答案
+- 如果是知识文档：AI 根据内容生成高质量论述题
 
----
+### 每日练习
 
-## 架构
+从题库里随机出题，像刷题 App 一样练习。已经掌握的题目不会再出现，做错的可以标记为"需复习"，下次会重新碰到。
 
-```
-用户浏览器
-    │
-    ▼
-┌─────────────┐     ┌──────────────────────────────────────┐
-│   Nginx     │────▶│  Express API Server (Node.js)          │
-│  前端静态文件 │     │                                      │
-└─────────────┘     │  POST /api/documents → 文件上传         │
-                    │  → extractText (PDF/DOCX/TXT)          │
-                    │  → splitIntoChunks (语义/段落)           │
-                    │  → embedTexts (embedding-2)             │
-                    │  → indexChunks (LanceDB 向量库)          │
-                    │  → classifyDocument (题库/知识)          │
-                    │  → extract/generate Questions           │
-                    │                                        │
-                    │  POST /api/chat/ask → RAG 问答          │
-                    │  → rewriteQuery → retrieve (双路+RRF)    │
-                    │  → rerank → MMR → LLM 生成              │
-                    │                                        │
-                    │  POST /api/training/generate → 出题      │
-                    │  → 题库查询 + AI 即时生成                 │
-                    │                                        │
-                    │  MySQL ←───→ LanceDB                    │
-                    │  (结构数据)   (向量检索)                   │
-                    └──────────────────────────────────────┘
-```
+### AI 问答助手
 
----
+可以针对上传的任何文档提问。不需要手动翻找资料，直接问 AI，它会从你上传的文档里找答案。如果文档里没有相关内容，它会如实告诉你，不会瞎编。
 
-## 项目结构
+### 已收录题库
+
+所有提取和生成的题目集中在这里。可以按知识点搜索、按掌握程度筛选、投票标记题目难度。
+
+### 文档库
+
+所有上传的文件列表。支持标题搜索、分类筛选、标签管理、收藏。PDF 可以在线预览，不需要下载。
+
+## 快速上手
+
+三步就能跑通：
 
 ```
-AI-web/
-├── frontend/                 # Vue 3 前端
-│   └── src/
-│       ├── api/              # Axios + fetch 封装
-│       ├── components/       # 组件（UploadDialog、DocumentReader、QuestionCard 等）
-│       ├── router/           # 路由 + beforeEach 鉴权守卫
-│       ├── stores/           # Pinia (auth、document、admin)
-│       ├── types/            # TypeScript 类型
-│       └── views/            # 页面（文库、文档阅读、AI 助手、训练、已收录、后台）
-├── backend/                  # Node.js 后端
-│   └── src/
-│       ├── config/           # 数据库连接、环境变量、Swagger
-│       ├── controllers/      # 控制器 (auth、document、admin、chat、training)
-│       ├── middlewares/      # 鉴权、上传、错误处理、请求 ID
-│       ├── models/           # Sequelize ORM (User、Document、Question、PracticeRecord 等)
-│       ├── routes/           # 路由
-│       ├── services/         # AI 服务 (chat、chunking、retrieval、rerank、rewrite、text2sql、
-│       │                     #            extraction、question-extraction、question-generation)
-│       ├── utils/            # 日志 (Winston)、错误类 (AppError)、AI Debug
-│       └── validators/       # Zod 参数校验
-├── docs/                     # API 文档、架构文档
-├── deploy/                   # 生产部署 (pm2 + Nginx)
-├── docker-compose.yml
-└── SETUP.md                  # 详细安装指南
+1. 注册账号
+      ↓
+2. 上传一份学习资料（PDF、Word 都行）
+      ↓
+3. 打开"每日训练"，开始练题
 ```
 
----
+上传后稍等片刻（取决于文档大小，小文档几秒钟，大 PDF 可能需要一两分钟），系统完成处理后就可以在"已收录"页面看到题目了。
 
-## API 文档
+## 看看实际长什么样
 
-启动后端后访问 `http://localhost:3000/api-docs` 查看 Swagger 文档，覆盖全部 39 个接口。
+### 文档库首页
 
-或查看 Markdown 版：[docs/API文档.md](docs/API文档.md)。
+所有上传的文件都在这里。顶部有搜索框，左侧可以按分类和标签筛选。每个文件卡片显示标题、类型、上传者和时间。点击文件可以进入阅读器，PDF 支持在线翻页、缩放。
 
----
+![alt text](image.png)
 
-## 环境变量
+### 文档阅读器
 
-| 变量 | 用途 | 必填 |
-|---|---|---|
-| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | MySQL 连接 | 是 |
-| `JWT_SECRET` | JWT 签名密钥 | 是 |
-| `MIMO_API_KEY` / `MIMO_BASE_URL` / `MIMO_MODEL` | LLM 对话/出题/提取 (OpenAI 兼容) | 推荐 |
-| `EMBED_API_KEY` / `EMBED_BASE_URL` / `EMBED_MODEL` | 文本向量化 | 推荐 |
-| `RERANK_API_KEY` / `RERANK_BASE_URL` / `RERANK_MODEL` | 检索精排（不可用时自动降级） | 可选 |
-| `DEBUG_AI` | 开启 AI 调试日志 | 可选 |
-| `PORT` | 后端端口（默认 3000） | 可选 |
+点击任意文档进入阅读模式。PDF 文件支持缩放和连续翻页，Word 和纯文本文件直接渲染在页面上。右侧可以看到文档的基本信息（上传者、日期、大小）。
 
----
+> 此处放入阅读器截图
 
-## License
+### AI 问答助手
 
-MIT
+在聊天框里直接提问，AI 会从你上传的文档中寻找答案。回答后面标注了信息来源文档，点击可以跳转原文。如果文档中没有相关内容，AI 会如实告知而非编造。
+
+> 此处放入 AI 助手截图
+
+### 每日训练
+
+系统从题库中随机抽题，每次显示一道。输入答案后点击"查看解析"可以看到参考答案和自己的对比。做完一道标记"已掌握"或"需复习"，已掌握的题不会再出现。
+
+> 此处放入每日训练截图
+
+### 已收录题库
+
+所有题目的总览页面。筛选栏可以按"全部/已掌握/需复习"切换，也可以搜索知识点关键词。每道题的卡片可以展开查看完整答案。题目的难度由用户投票决定，满 10 票锁定。
+
+> 此处放入已收录页面截图
+
+## 一个完整的例子
+
+小林在准备 Go 语言面试。他的使用过程很简单：
+
+1. **收集资料**：从网上下载了《100道Golang面试题》PDF、《150道MySQL+Redis面试题》PDF，还有一些自己整理的笔记 TXT 文件。
+2. **上传**：在文档库页面点击"上传"，选了这几个文件一起拖进去。
+3. **自动处理**：系统识别出面试题 PDF 是题库文档，自动提取了 250 道现成题目；笔记 TXT 是知识文档，AI 根据内容生成了 30 道论述题。全部进了"已收录"题库。
+4. **开始练习**：小林每天打开"每日训练"，系统每次出 10 道题。做对的不再出现，做错的标记为"需复习"。遇到拿不准的知识点，去 AI 助手搜一下，结果直接出自他上传的文档。
+5. **两周后**：300 道题全部掌握。面试那天被问到 Go 的 GMP 调度模型，这道题他练过三次，对答如流。
+
+这个模式不仅适用于面试——考证、期末复习、入职培训、技能学习，只要你有学习资料，Papier 就能把它们变成练习题。
+
+## 常见问题
+
+### 支持哪些文件格式？
+
+PDF、Word（.docx）、纯文本（.txt）、图片。单文件最大 50MB，一次最多上传 10 个文件。
+
+### 出题要等多久？
+
+小文档（几十 KB）几秒完成。大 PDF（几十 MB）因为需要提取文字、切块、逐块生成题目，可能需要一两分钟。处理进度可以在日志中查看。
+
+### 搭建麻烦吗？不会写代码能不能用？
+
+提供两种方式：
+
+**Docker 一键部署**：适合有一点技术基础的用户。安装 Docker 后，克隆项目、配置好 API Key、一条命令启动，浏览器打开就能用。
+
+**手动部署**：适合开发者。需要自己装 Node.js 和 MySQL，适合想二次开发的人。
+
+详细的安装步骤在 [SETUP.md](SETUP.md) 里，按步骤操作即可。如果不具备搭建能力，也可以找人帮你部署一次，之后日常使用完全不需要碰代码。
+
+### 要花钱吗？AI 调用贵不贵？
+
+项目本身是开源的，不收费。需要花钱的是 AI API 调用：
+
+- **DeepSeek**：充值 10 元够用几个月。聊天模型按使用量计费，出题和生成每份文档消耗几分钱。
+- **智谱 embedding-2**：免费，用于文档向量化检索。
+- **SiliconFlow Rerank**：可选，用于提升检索精度。不开启也能正常使用，系统会自动降级。
+
+如果只是个人使用，月均花费在 5-10 元左右。
+
+### 文档怎么分类？系统怎么判断这是题库还是知识文档？
+
+上传文档后，系统用两层判断：
+
+**第一层：快速扫描。** 统计文档里的题号密度——像 `1.` `（3）` `一、` 这类编号，如果平均每 20 行就出现一个，说明这份文档大概率是现成的题库（每道题前面都有编号）。
+
+**第二层：内容分析。** 如果题号密度不够，系统会进一步分析文档的段落结构。知识文档的段落之间语义连贯，相似度高；题库文档的 Q&A 之间话题跳变大，相似度忽高忽低。通过比较相邻段落的相似度波动，就能做出判断。
+
+- 判断为题库文档 → 自动提取现成的题目和答案
+- 判断为知识文档 → AI 根据内容预生成论述题
+
+分类结果直接决定了后续怎么出题，所以这步是整个流程的关键节点。
+
+### 题目质量怎么样？怎么保证 AI 不乱编？
+
+三道防线确保题目质量：
+
+**第一道：出题前的筛选。** AI 出题前必须先确认原文中有足够的内容——如果原文对某个概念只是一句话带过，没有展开说明，AI 不会强行出题。这避免了"原文只提了一个名词，答案全靠编"的情况。
+
+**第二道：提示词约束。** 系统告诉 AI"你是一个只读过这份文档的人，你不懂任何编程语言和数据库"，要求答案中的所有事实列在输入的资料里面能找得到。AI 不能引用文档里没有的数字、步骤、工具名或专业术语。
+
+**第三道：出题后审核。** 每道题生成后，系统会用另一个独立的 AI 模型逐题检查——题目和答案里的每一个断言，能不能在原文里找到依据。如果找不到依据，这道题直接丢掉，不会进题库。
+
+根据实际测试，经过三道防线后，预生成题目的忠实度（答案来自原文的程度）达到 4.7 分（满分 5 分），不合格率低于 40%。未来随着闸门机制运行，这个数字会持续改善。
+
+### AI 问答助手会不会瞎编？
+
+同样有多道防护。系统在检索到相关文档内容后，不会直接把内容扔给 AI 就完事了，而是先过一道"覆盖度检测"——内容总量够不够？最相关的那段质量够不够？如果两样都不达标，系统直接回复"未找到相关信息"，压根不会让 AI 尝试回答，把胡说八道的可能性从源头上掐掉。
+
+此外，提示词要求 AI"只根据参考资料回答，不要编造、不要猜测、不要补充外部知识"。回答中禁止出现"根据资料显示""参考资料提到"这类引用句式，要求像人在对话一样自然表达。
+
+改进效果：幻觉率从 56% 降到了 11%，忠实度从 4.1 分提升到 4.9 分（满分 5 分）。
+
+### 一份文档能出多少题？
+
+取决于文档长度和内容密度。题库文档直接按题号提取，有多少题就出多少题。知识文档每段大约生成 2 道论述题。
+
+### 我的文件会泄露给 AI 吗？
+
+文件上传后存储在你的服务器上。AI 处理时只发送文字片段用于出题和检索，不会把整份文件发送到 AI 服务商。所有 API 调用是加密传输的。
+
+### 可以多个人一起用吗？
+
+可以。每个用户注册独立账号，上传的文档和练习记录互不影响。管理员账号可以看到所有用户的文档和题目。
+
+## 使用方式
+
+访问网站，注册一个账号，从自带的示例文档开始试用，或者直接上传自己的学习资料。
+
+上传文档后系统会自动处理——切块、分类、出题。稍等片刻就能在"已收录"和"每日训练"页面看到题目了。
+
+## 项目架构
+
+这是一个前后端分离的 Web 应用。用户通过浏览器访问，后端负责文件处理、AI 出题、数据存储。
+
+核心流程：**上传文档 → AI 读懂内容 → 自动出题 → 开始练习**
+
+## 技术说明
+
+如果你关心技术实现，这里是一些基本信息：
+
+- 前端使用 Vue 框架，后端使用 Node.js
+- 文档内容存储在 MySQL 数据库中
+- 文件向量化存储在 LanceDB 中，用于 AI 语义检索
+- AI 服务使用 DeepSeek 进行文字理解和生成
+- 支持 Docker 一键部署，也有 Nginx + pm2 的手动部署方案
+
+详细的安装、配置、API 接口说明请查看同一目录下的 [SETUP.md](SETUP.md) 和 `docs/` 目录。

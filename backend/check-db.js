@@ -4,7 +4,7 @@ async function main() {
   const conn = await mysql.createConnection({
     host: 'mysql',
     user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || 'qweasdzxc',
+    password: process.env.DB_PASSWORD,
     database: 'papier',
   })
   try {

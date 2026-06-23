@@ -1,7 +1,10 @@
 import bcrypt from 'bcryptjs'
+import dotenv from 'dotenv'
 import sequelize from './config/database'
 import { defineAssociations, User, Category, Tag } from './models'
 import { createModuleLogger } from './utils/logger'
+
+dotenv.config()
 
 const logger = createModuleLogger('seed')
 
@@ -20,13 +23,19 @@ async function seed(): Promise<void> {
   ])
   logger.info('默认分类已创建')
 
-  const adminHash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'CHANGE_ME_admin_pwd', 10)
-  const userHash = await bcrypt.hash(process.env.USER_PASSWORD || 'CHANGE_ME_user_pwd', 10)
+  const adminUsername = process.env.ADMIN_USERNAME || 'admin'
+  const adminPassword = process.env.ADMIN_PASSWORD || 'change_me_admin'
+  const userUsername = process.env.USER_USERNAME || 'user'
+  const userPassword = process.env.USER_PASSWORD || 'change_me_user'
+
+  const adminHash = await bcrypt.hash(adminPassword, 10)
+  const userHash = await bcrypt.hash(userPassword, 10)
 
   await User.bulkCreate([
-    { username: process.env.ADMIN_USERNAME || 'admin', password: adminHash, role: 'admin' },
-    { username: process.env.USER_USERNAME || 'user', password: userHash, role: 'user' },
+    { username: adminUsername, password: adminHash, role: 'admin' },
+    { username: userUsername, password: userHash, role: 'user' },
   ])
+  logger.info(`默认用户已创建 (${adminUsername} / ${userUsername})`)
 
   await Tag.bulkCreate([
     { name: 'JavaScript' },

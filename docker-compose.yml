@@ -4,10 +4,10 @@ services:
     command: --innodb-buffer-pool-size=128M --max-connections=50 --performance-schema=OFF
     mem_limit: 400M
     environment:
-      MYSQL_ROOT_PASSWORD: qweasdzxc
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: papier
       MYSQL_USER: phj
-      MYSQL_PASSWORD: qweasdzxc
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
       - "3306:3306"
     volumes:
@@ -26,7 +26,8 @@ services:
     environment:
       DB_HOST: mysql
       DB_USER: root
-      DB_PASSWORD: qweasdzxc
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
       NODE_OPTIONS: --max-old-space-size=256
     env_file:
       - ./backend/.env
