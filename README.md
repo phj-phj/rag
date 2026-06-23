@@ -73,7 +73,8 @@ Papier 把普通的学习资料（PDF、Word、笔记、网页摘录）自动变
 
 系统从题库中随机抽题，提供填写功能，会以4：1的比例生成部分不属于题库的问题，从题库出的题目拥有难度系统，由用户选择难度计入后台。点击"查看解析"可以看到参考答案和自己的对比。做完一道标记"已掌握"或"需复习"，已掌握的题不会再出现。
 
-<img width="937" height="836" alt="image" src="https://github.com/user-attachments/assets/fbc83da7-ad5c-4a83-9d13-17f101c83992" />
+<img width="1907" height="920" alt="image" src="https://github.com/user-attachments/assets/e21993a6-f481-4d7a-a5e0-aceb86c55eab" />
+
 
 
 ### 已收录题库
