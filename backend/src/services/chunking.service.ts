@@ -1,4 +1,3 @@
-import { embedTexts } from './embedding.service'
 import { createModuleLogger } from '../utils/logger'
 
 const logger = createModuleLogger('chunking')
@@ -18,6 +17,8 @@ export interface ChunkResult {
   positionStart: number
   positionEnd: number
   strategy: 'semantic' | 'paragraph'
+  boundaryOk?: boolean
+  infoDensity?: number
 }
 
 // ── 入口 ──
@@ -34,63 +35,16 @@ export async function splitIntoChunks(
 ): Promise<ChunkResult[]> {
   if (!text || !text.trim()) return []
 
-  logger.info('[chunking] 开始语义分块，文本总长度:', text.length, '字, 上限:', maxSize, '字')
+  logger.info('[chunking] 段落分块，文本总长度:', text.length, '字, 上限:', maxSize, '字')
 
-  // 尝试语义分块
-  try {
-    const chunks = await semanticChunking(text, maxSize, minSize)
-    return addOverlap(chunks)
-  } catch (err) {
-    logger.info('[chunking] embedding 不可用，回退段落分块:', (err as Error).message)
-    const chunks = paragraphChunking(text, maxSize, minSize)
-    return addOverlap(chunks)
-  }
+  const chunks = paragraphChunking(text, maxSize, minSize)
+  const overlapped = addOverlap(chunks)
+  return assessQuality(overlapped)
 }
 
 
 // ═══════════════════════════════════════
-// 语义分块（优先使用）
-// ═══════════════════════════════════════
-
-async function semanticChunking(
-  text: string,
-  maxSize: number,
-  minSize: number,
-): Promise<ChunkResult[]> {
-  const sentences = splitSentences(text)
-  logger.info(`[chunking] 第1步：共 ${sentences.length} 个句子`)
-  if (sentences.length <= 1) {
-    const c = makeChunk(sentences, 0, 'semantic')
-    logger.info(`[chunking]   块${c.index} (${c.content.length}字, ${c.tokenCount}t, ${c.strategy})`)
-    return [c]
-  }
-
-  // 计算句子向量
-  const sentenceTexts = sentences.map(s => s.text)
-  const embeddings = await embedTexts(sentenceTexts)
-  logger.info(`[chunking] 第2步：已计算 ${embeddings.length} 个句子的向量 (${embeddings[0]?.length || 0}维)`)
-
-  // 相邻句子相似度
-  const similarities: number[] = []
-  for (let i = 0; i < embeddings.length - 1; i++) {
-    similarities.push(cosineSimilarity(embeddings[i], embeddings[i + 1]))
-  }
-  logger.info('[chunking] 第3步：相邻句子相似度:', similarities.map(s => s.toFixed(3)).join(', '))
-
-  // 断点
-  const breakpoints = findBreakpoints(similarities, 0.5)
-  logger.info(`[chunking] 第4步：断点位置: [${breakpoints.join(', ')}]（共${breakpoints.length}个）`)
-
-  // 合并 + 控制大小
-  const chunks = mergeSemanticGroups(sentences, breakpoints, minSize, maxSize)
-  logger.info(`[chunking] 第5步：最终生成 ${chunks.length} 个块`)
-  chunks.forEach(c => logger.info(`[chunking]   块${c.index} (${c.content.length}字, ${c.tokenCount}t, ${c.strategy})`))
-  return chunks
-}
-
-
-// ═══════════════════════════════════════
-// 段落分块（回退方案）
+// 段落分块
 // ═══════════════════════════════════════
 
 function paragraphChunking(text: string, maxSize: number, minSize: number): ChunkResult[] {
@@ -139,7 +93,6 @@ function mergeSegments(segments: string[], maxSize: number, minSize: number): st
   if (buf.trim()) merged.push(buf.trim())
   return merged
 }
-
 
 /**
  * 拆分超长句子（无标点的 URL 或代码块），按字符位置硬截断
@@ -303,6 +256,55 @@ export function addOverlap(chunks: ChunkResult[]): ChunkResult[] {
   }
 
   logger.info(`[chunking] 重叠窗口: ${OVERLAP_RATIO * 100}%`)
+  return chunks
+}
+
+// ── 切块质量评估 ──
+
+function checkBoundary(chunk: string): boolean {
+  if (chunk.length < 10) return false
+  // 开头不能是句号/逗号/分号等（说明从句子中间切开）
+  if (/^[，。；、）\)\]】]/.test(chunk)) return false
+  // 结尾需要以完整标点结束
+  return /[。！？\.!\?]$/.test(chunk)
+}
+
+function evaluateDensity(chunk: string): number {
+  const navNoise = ['目录', '前言', '点击', '下一页', '上一页', '返回', '版权', '免责']
+  const hits = navNoise.filter(w => chunk.includes(w)).length
+  const ratio = 1 - hits / navNoise.length
+  // <50 字的碎片扣 30%
+  const fragPenalty = chunk.length < 50 ? 0.3 : 0
+  return Math.max(0, ratio - fragPenalty)
+}
+
+function anchorHeadings(chunks: ChunkResult[]): void {
+  let currentHeading: string | null = null
+  for (const c of chunks) {
+    if (c.heading) { currentHeading = c.heading; continue }
+    if (currentHeading) c.heading = currentHeading
+  }
+}
+
+function assessQuality(chunks: ChunkResult[]): ChunkResult[] {
+  anchorHeadings(chunks)
+  const badBoundary: number[] = []
+  const lowDensity: number[] = []
+
+  for (const c of chunks) {
+    c.boundaryOk = checkBoundary(c.content)
+    c.infoDensity = evaluateDensity(c.content)
+    if (!c.boundaryOk) badBoundary.push(c.index)
+    if (c.infoDensity < 0.5) lowDensity.push(c.index)
+  }
+
+  if (badBoundary.length > 0) {
+    logger.info(`[chunking] 边界质量问题: ${badBoundary.length} 个 chunk 切割不完整, index=[${badBoundary.join(',')}]`)
+  }
+  if (lowDensity.length > 0) {
+    logger.info(`[chunking] 信息密度问题: ${lowDensity.length} 个 chunk 含导航词/碎片, index=[${lowDensity.join(',')}]`)
+  }
+
   return chunks
 }
 

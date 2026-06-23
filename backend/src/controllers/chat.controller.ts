@@ -1,7 +1,6 @@
 import { Request, Response } from 'express'
-import { askDocument, askDocumentStream, askDocumentForTraining, startTrainingStream, routeWithLLM } from '../services/chat.service'
+import { askDocument, askDocumentStream, askDocumentForTraining, startTrainingStream, routeWithLLM, filterAndExpand } from '../services/chat.service'
 import { retrieve } from '../services/retrieval.service'
-import { rewriteQuery } from '../services/rewrite.service'
 import { routeQuery } from '../services/router.service'
 import { debugPhase, debugInfo, debugRetrieval, debugConfidence, debugLLM, debugTiming, debugRoute } from '../utils/debug'
 import { BadRequestError } from '../utils/errors'
@@ -75,10 +74,10 @@ export async function ask(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    // Query 泛化 + 检索（快速/深度共用）
-    const rewritten = await rewriteQuery(question)
-    debugInfo('改写结果', rewritten || '(空)')
-    const retrievalQuery = question + ' ' + rewritten
+    // 一次 LLM 调用：检索词扩展 + 历史筛选
+    const history = req.body.history as Array<{ role: string; content: string }> | undefined
+    const { retrievalQuery, filtered: filteredHistory } = await filterAndExpand(question, history || [])
+    debugInfo('检索词', retrievalQuery)
 
     const retrievalStart = Date.now()
     const retrieved = await retrieve(retrievalQuery, 5)
@@ -135,7 +134,7 @@ export async function ask(req: Request, res: Response): Promise<void> {
     }))
 
     const llmStart = Date.now()
-    const result = await askDocument(question, chunks, req.body.thinking === true, req.body.history)
+    const result = await askDocument(question, chunks, req.body.thinking === true, history, filteredHistory)
     debugLLM(0, Date.now() - llmStart, 0)
     debugTiming()
 
@@ -190,10 +189,9 @@ export async function askStream(req: Request, res: Response): Promise<void> {
     return
   }
 
-  // Query 泛化
-  const rewritten = await rewriteQuery(question)
-  debugInfo('改写结果', rewritten || '(空)')
-  const retrievalQuery = question + ' ' + rewritten
+  // 一次 LLM 调用：检索词扩展 + 历史筛选
+  const { retrievalQuery, filtered: filteredHistory } = await filterAndExpand(question, history || [])
+  debugInfo('检索词', retrievalQuery)
 
   // 检索
   const retrievalStart = Date.now()
@@ -259,7 +257,7 @@ export async function askStream(req: Request, res: Response): Promise<void> {
     res.flushHeaders()
 
     try {
-      const stream = askDocumentStream(question, chunks, req.body.thinking === true, req.body.history)
+      const stream = askDocumentStream(question, chunks, req.body.thinking === true, history, filteredHistory)
 
       // 先发 docs
       res.write(`data: ${JSON.stringify({ type: 'docs', docs })}\n\n`)

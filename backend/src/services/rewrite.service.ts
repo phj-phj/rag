@@ -7,7 +7,19 @@ const BASE_URL = process.env.MIMO_BASE_URL || 'https://api.deepseek.com/v1'
 const API_KEY = process.env.MIMO_API_KEY || ''
 const MODEL = process.env.MIMO_MODEL || 'deepseek-chat'
 
-export async function rewriteQuery(question: string): Promise<string> {
+export async function rewriteQuery(
+  question: string,
+  history?: Array<{ role: string; content: string }>,
+): Promise<string> {
+  // 提取上一轮用户问题作为上下文
+  const lastUserQ = history
+    ?.filter(h => h.role === 'user')
+    .slice(-1)[0]?.content?.slice(0, 100) || ''
+
+  const prompt = lastUserQ
+    ? `用户上一轮问了"${lastUserQ}"，这一轮追问"${question}"。把追问改写为2-3个检索用关键词，用空格分隔，直接输出关键词。`
+    : `把用户问题改写成2-3个检索用关键词，用空格分隔，直接输出关键词。\n\n示例:\n用户：HashMap怎么扩容的？\n输出：HashMap扩容 扩容机制 rehash`
+
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const start = Date.now()
@@ -18,10 +30,7 @@ export async function rewriteQuery(question: string): Promise<string> {
           temperature: 0,
           max_tokens: 60,
           messages: [
-            {
-              role: 'system',
-              content: '把用户问题改写成2-3个检索用关键词，用空格分隔，直接输出关键词。\n\n示例:\n用户：HashMap怎么扩容的？\n输出：HashMap扩容 扩容机制 rehash',
-            },
+            { role: 'system', content: prompt },
             { role: 'user', content: question },
           ],
         },
