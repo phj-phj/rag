@@ -1,5 +1,30 @@
 # Papier — 把文档变成学习工具
 
+## 技术栈
+
+![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![Tailwind_CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white)
+![Three.js](https://img.shields.io/badge/Three.js-000000?logo=threedotjs&logoColor=white)
+![ECharts](https://img.shields.io/badge/ECharts-AA344D?logo=apacheecharts&logoColor=white)
+![Pinia](https://img.shields.io/badge/Pinia-FFD859?logo=pinia&logoColor=black)
+<br>
+![Node.js](https://img.shields.io/badge/Node.js-5FA04E?logo=nodedotjs&logoColor=white)
+![Express](https://img.shields.io/badge/Express-000000?logo=express&logoColor=white)
+![Sequelize](https://img.shields.io/badge/Sequelize-52B0E7?logo=sequelize&logoColor=white)
+![Zod](https://img.shields.io/badge/Zod-3E67B1?logo=zod&logoColor=white)
+<br>
+![MySQL](https://img.shields.io/badge/MySQL_8.0-4479A1?logo=mysql&logoColor=white)
+![LanceDB](https://img.shields.io/badge/LanceDB-向量检索-38B2AC)
+<br>
+![DeepSeek](https://img.shields.io/badge/DeepSeek-LLM-536DFE)
+![智谱](https://img.shields.io/badge/智谱-embedding--2-6C5CE7)
+![SiliconFlow](https://img.shields.io/badge/SiliconFlow-Rerank-F97316)
+<br>
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+![Nginx](https://img.shields.io/badge/Nginx-009639?logo=nginx&logoColor=white)
+
 ## 这是什么
 
 Papier 把普通的学习资料（PDF、Word、笔记、网页摘录）自动变成练习题。
