@@ -79,8 +79,12 @@ Papier 把普通的学习资料（PDF、Word、笔记、网页摘录）自动变
 ### 已收录题库
 
 所有题目的总览页面。筛选栏可以按"全部/已掌握/需复习"切换，也可以搜索知识点关键词。每道题的卡片可以展开查看完整答案。题目的难度由用户投票决定，满 10 票锁定。
+<img width="1917" height="912" alt="image" src="https://github.com/user-attachments/assets/a6e63c4a-e195-4ccd-8b85-43264305d496" />
 
-<img width="1061" height="828" alt="image" src="https://github.com/user-attachments/assets/e0cdc39b-3a2e-4d37-ac8f-ffdfa61b3cc6" />
+
+
+
+
 
 
 ## 一个完整的例子
