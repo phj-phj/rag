@@ -22,6 +22,9 @@ import swaggerSpec from './config/swagger'
 
 dotenv.config()
 
+// 最早期的日志：解决 502 无法排查的问题
+console.log(`[启动] ${new Date().toISOString()} 进程开始，日志目录: ${path.resolve('logs')}`)
+
 defineAssociations()
 
 const app = express()
@@ -78,6 +81,17 @@ app.get('/', (_req, res) => {
 app.use(errorHandler)
 
 if (process.env.NODE_ENV !== 'test') {
+  // 兜底：进程崩溃前强制写日志
+  process.on('uncaughtException', (err) => {
+    logger.error('未捕获异常，进程即将退出:', err)
+    console.error('未捕获异常:', err)
+    setTimeout(() => process.exit(1), 500) // 给 winston 一点时间刷盘
+  })
+  process.on('unhandledRejection', (reason) => {
+    logger.error('未处理的 Promise 拒绝:', reason)
+    console.error('未处理的 Promise 拒绝:', reason)
+  })
+
   sequelize.authenticate()
     .then(() => {
       logger.info('数据库连接成功')
@@ -97,13 +111,17 @@ if (process.env.NODE_ENV !== 'test') {
           server.on('error', (err: NodeJS.ErrnoException) => {
             if (err.code === 'EADDRINUSE') {
               logger.error(`端口 ${PORT} 被占用，请先关闭占用进程`)
-              process.exit(1)
+            } else {
+              logger.error('服务器启动错误:', err)
             }
+            process.exit(1)
           })
         })
     })
     .catch((err) => {
       logger.error('启动失败:', err)
+      console.error('启动失败:', err)
+      process.exit(1)
     })
 }
 

@@ -27,12 +27,12 @@ const transports: winston.transport[] = [
     filename: 'logs/error.log',
     level: 'error',
     format: winston.format.json(),
-    options: { flags: 'w' },
+    options: { flags: 'a' },
   }),
   new winston.transports.File({
     filename: 'logs/combined.log',
     format: winston.format.json(),
-    options: { flags: 'w' },
+    options: { flags: 'a' },
   }),
 ]
 
@@ -45,7 +45,7 @@ if (DEBUG_AI) {
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
         devPrintf,
       ),
-      options: { flags: 'w' },
+      options: { flags: 'a' },
     }),
   )
 }

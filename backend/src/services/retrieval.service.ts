@@ -220,6 +220,10 @@ export async function retrieve(
   } else {
     reranked = await rerank(question, merged, topK * 2)
     logger.info(`[retrieval] Rerank精排: ${merged.length}条 → ${reranked.length}条`)
+    reranked.forEach((c, i) => {
+      const preview = c.content.slice(0, 80).replace(/\n/g, ' ')
+      logger.info(`[retrieval]   R[${i + 1}] [${c.documentTitle}] score=${c.score.toFixed(3)} | ${preview}...`)
+    })
   }
 
   // MMR 多样性选择
@@ -228,7 +232,7 @@ export async function retrieve(
     selected = reranked.slice(0, topK)
     logger.info('[retrieval] MMR 已禁用，直接取Top:')
   } else {
-    selected = mmrSelect(reranked, topK, 0.7)
+    selected = mmrSelect(reranked, topK, 0.85)
     logger.info(`[retrieval] MMR 精选结果:`)
   }
   selected.forEach((c: RetrievedChunk, i: number) => {
@@ -388,9 +392,9 @@ export function mmrSelect(candidates: RetrievedChunk[], topK: number, lambda: nu
       // 多样性：与已选中的最大文本重叠度
       let maxOverlap = 0
       for (const s of selected) {
-        // 优先惩罚同文档
+        // 同文档轻度惩罚（不同段落可能讲不同知识点）
         if (remaining[i].documentId === s.documentId) {
-          maxOverlap = Math.max(maxOverlap, 0.5)
+          maxOverlap = Math.max(maxOverlap, 0.3)
         }
         const overlap = jaccardOverlap(remaining[i].content, s.content)
         maxOverlap = Math.max(maxOverlap, overlap)
