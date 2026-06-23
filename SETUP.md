@@ -24,23 +24,24 @@
 ### 三步启动
 
 ```bash
-# 1. 进入项目
+# 1. 克隆项目
+git clone https://github.com/phj-phj/AI-web.git
 cd AI-web
 
-# 2. 配置 API Key
+# 2. 配置环境变量
 copy backend\.env.example backend\.env
 # 编辑 backend\.env，至少填入：
-#   - JWT_SECRET（随便打一串随机字符）
-#   - EMBED_API_KEY（向量化用，免费注册）
-#   - MIMO_API_KEY（AI 对话/出题用，DeepSeek 充值 10 元够用数月）
+#   - JWT_SECRET         随便打一串随机字符
+#   - EMBED_API_KEY      智谱 API Key（向量化用，免费注册）
+#   - MIMO_API_KEY       DeepSeek API Key（AI 对话/出题用）
 
 # 3. 启动
 docker compose up -d
 ```
 
-浏览器打开 `http://localhost`，用 `.env` 中配置的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录（默认 `admin` / `change_me_admin`，**首次使用务必修改**）。
+浏览器打开 `http://localhost` 即可使用。默认管理员账号为 `admin` / `change_me_admin`（通过 `.env` 中 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 配置，**首次使用务必修改**）。
 
-> **安全提示**：`docker-compose.yml` 中的 MySQL 密码也是默认值，部署到公网前请一并修改。
+> **注意**：Docker 环境下数据库连接由 `docker-compose.yml` 统一管理，`.env` 中的 `DB_*` 变量会被覆盖，无需额外配置。部署到公网前请修改 `docker-compose.yml` 中的 MySQL 默认密码。
 
 ### 常用命令
 
