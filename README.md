@@ -53,7 +53,8 @@ Papier 把普通的学习资料（PDF、Word、笔记、网页摘录）自动变
 
 所有上传的文件都在这里。顶部有搜索框，左侧可以按分类和标签筛选。每个文件卡片显示标题、类型、上传者和时间。点击文件可以进入阅读器，适配部分移动端。
 
-> 此处放入首页截图
+<img width="1915" height="911" alt="image" src="https://github.com/user-attachments/assets/4722a72e-5491-41d9-adce-16272be2eabf" />
+
 
 ### 文档阅读器
 
@@ -66,19 +67,21 @@ Papier 把普通的学习资料（PDF、Word、笔记、网页摘录）自动变
 
 在聊天框里直接提问，AI 会从你上传的文档中寻找答案。回答后面标注了信息来源文档，点击可以跳转原文。如果文档中没有相关内容，AI 会如实告知而非编造。
 
-> 此处放入 AI 助手截图
+<img width="1911" height="917" alt="image" src="https://github.com/user-attachments/assets/cecb944e-26e8-4986-a5e2-71c0c7c9efda" />
 
 ### 每日训练
 
 系统从题库中随机抽题，提供填写功能，会以4：1的比例生成部分不属于题库的问题，从题库出的题目拥有难度系统，由用户选择难度计入后台。点击"查看解析"可以看到参考答案和自己的对比。做完一道标记"已掌握"或"需复习"，已掌握的题不会再出现。
 
-> 此处放入每日训练截图
+<img width="937" height="836" alt="image" src="https://github.com/user-attachments/assets/fbc83da7-ad5c-4a83-9d13-17f101c83992" />
+
 
 ### 已收录题库
 
 所有题目的总览页面。筛选栏可以按"全部/已掌握/需复习"切换，也可以搜索知识点关键词。每道题的卡片可以展开查看完整答案。题目的难度由用户投票决定，满 10 票锁定。
 
-> 此处放入已收录页面截图
+<img width="1061" height="828" alt="image" src="https://github.com/user-attachments/assets/e0cdc39b-3a2e-4d37-ac8f-ffdfa61b3cc6" />
+
 
 ## 一个完整的例子
 
