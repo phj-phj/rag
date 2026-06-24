@@ -17,7 +17,7 @@ interface CoverageResult {
   reason: string
 }
 
-function checkCoverage(
+export function checkCoverage(
   chunks: { content: string; score: number }[],
 ): CoverageResult {
   // 信号 1：总文本量
@@ -26,10 +26,21 @@ function checkCoverage(
     return { sufficient: false, reason: `chunk 总文本量 ${totalText} 字 < 300` }
   }
 
-  // 信号 2：top chunk 质量
-  const topScore = chunks[0]?.score ?? 0
-  if (topScore < 0.15) {
-    return { sufficient: false, reason: `最高分 ${topScore.toFixed(3)} < 0.15` }
+  // 信号 2：top chunk 质量（绝对底线 + 峰谷突出比）
+  const top1 = chunks[0]?.score ?? 0
+  const top2 = chunks[1]?.score ?? 0
+
+  // 绝对底线：最高分低于 0.10 视为无效检索
+  if (top1 < 0.10) {
+    return { sufficient: false, reason: `top1=${top1.toFixed(3)} < 0.10` }
+  }
+
+  // 灰色区间 [0.10, 0.20)：需 PeakGap ≥ 0.15 证明 top 不是低分扎堆中的偶然
+  if (top1 < 0.20) {
+    const peakGap = top1 - top2
+    if (peakGap < 0.15) {
+      return { sufficient: false, reason: `top1=${top1.toFixed(3)} 灰色区间, PeakGap=${peakGap.toFixed(3)} < 0.15` }
+    }
   }
 
   return { sufficient: true, reason: 'ok' }
