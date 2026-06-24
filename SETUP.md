@@ -21,27 +21,48 @@
 }
 ```
 
-### 三步启动
+### 启动
 
 ```bash
 # 1. 克隆项目
 git clone https://github.com/phj-phj/AI-web.git
 cd AI-web
 
+<<<<<<< HEAD
 # 2. 配置环境变量
 copy backend\.env.example backend\.env
 # 编辑 backend\.env，至少填入：
 #   - JWT_SECRET         随便打一串随机字符
 #   - EMBED_API_KEY      智谱 API Key（向量化用，免费注册）
 #   - MIMO_API_KEY       DeepSeek API Key（AI 对话/出题用）
+=======
+# 2. 配置 Docker 环境变量（必填）
+copy .env.example .env
+# 编辑 .env，修改 MySQL 密码和 JWT 密钥：
+#   MYSQL_ROOT_PASSWORD=改成你自己的密码
+#   MYSQL_PASSWORD=改成你自己的密码
+#   JWT_SECRET=随便打一串随机字符
+>>>>>>> dev/Android
 
-# 3. 启动
+# 3. 配置后端环境变量（必填）
+copy backend\.env.example backend\.env
+# 编辑 backend\.env，至少填入 AI API Key：
+#   EMBED_API_KEY=智谱 API Key（免费注册）
+#   MIMO_API_KEY=DeepSeek API Key（充值 10 元够用数月）
+
+# 4. 启动
 docker compose up -d
 ```
 
+<<<<<<< HEAD
 浏览器打开 `http://localhost` 即可使用。默认管理员账号为 `admin` / `change_me_admin`（通过 `.env` 中 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 配置，**首次使用务必修改**）。
 
 > **注意**：Docker 环境下数据库连接由 `docker-compose.yml` 统一管理，`.env` 中的 `DB_*` 变量会被覆盖，无需额外配置。部署到公网前请修改 `docker-compose.yml` 中的 MySQL 默认密码。
+=======
+浏览器打开 `http://localhost` 即可使用。默认管理员账号为 `admin` / `change_me_admin`（通过 `backend/.env` 中 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 配置，**首次使用务必修改**）。
+
+> **为什么需要两个 .env 文件？** 项目根目录的 `.env` 供 Docker Compose 读取（MySQL 密码、JWT 密钥），`backend/.env` 供后端应用读取（AI API Key、数据库连接等）。Docker 启动时，根 `.env` 中的 `JWT_SECRET` 和 `DB_PASSWORD` 会覆盖 `backend/.env` 中的同名变量。
+>>>>>>> dev/Android
 
 ### 常用命令
 

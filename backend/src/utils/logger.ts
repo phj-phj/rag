@@ -14,6 +14,11 @@ const devPrintf = winston.format.printf(
   },
 )
 
+// 只在 DEBUG_AI 开启时输出 debug 级别日志，其余文件仅 info 以上
+const debugOnly = winston.format((info) => {
+  return info.level === 'debug' ? info : false
+})()
+
 const transports: winston.transport[] = [
   new winston.transports.Console({
     format: winston.format.combine(
@@ -31,6 +36,7 @@ const transports: winston.transport[] = [
   }),
   new winston.transports.File({
     filename: 'logs/combined.log',
+    level: 'info',
     format: winston.format.json(),
     options: { flags: 'w' },
   }),
@@ -42,6 +48,7 @@ if (DEBUG_AI) {
       filename: 'logs/ai-debug.log',
       level: 'debug',
       format: winston.format.combine(
+        debugOnly,
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
         devPrintf,
       ),

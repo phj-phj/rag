@@ -1075,3 +1075,84 @@ LLM 编造           3/9       →    0/9       (清零)
 - `docs/检索质量修复方案.md` — 覆盖度闸门 + 上下文展开
 
 ### 已提交
+
+- `7f2ab8b` feat: RAG 检索评估体系 + RRF 动态加权 (4 文件, 662+ 18-)
+
+## 2026-06-23
+
+### Agent Skill：简历审查与优化
+
+- 从 GitHub [cuiliangruihai/-skill](https://github.com/cuiliangruihai/-skill) 安装 `agent-resume-review` skill 至 `.claude/skills/agent-resume-review/`
+- 基于 RedologFiles.md 真实项目数据，生成简历审查演示文档 `docs/resume-review-demo.md`
+- 演示三段式改写公式效果：原始版本（7 类问题）→ 审查优化（项目简介 + 技术栈分层 + 5 条个人职责改写）
+
+### 覆盖率闸门：PeakGap 动态阈值
+
+- **问题**：`checkCoverage()` 用绝对阈值 `topScore < 0.15` 一刀拦截，存在三个缺陷：
+  - 硬阈值不补偿：0.149 + 3000 字被拦 vs 0.151 + 300 字放行
+  - 冷门精准查询被误杀：术语查询天然低分但可能精准命中
+  - 模型绑定：换 Reranker 需重新标定
+- **方案**：PeakGap 动态阈值
+  ```
+  Before: topScore < 0.15 → 拦截
+  After:  top1 < 0.10                              → 绝对底线（防垃圾）
+          OR (top1 < 0.20 AND (top1 - top2) < 0.15) → 灰色区间需有赢家
+  ```
+- 设计特点：灰色区间 [0.10, 0.20) 内用峰谷差（而非比值或中位数）判断 top 是否显著突出，绝对值阈值只做底线兜底
+- **文件**：`chat.controller.ts` `checkCoverage()` — 重写信号 2，导出供测试
+- **测试**：新建 `chat.controller.test.ts`（13 用例），覆盖绝对底线 / 灰色扎堆 / 灰色有赢家 / 高分直通 / 空数组 / 双条件同时触发
+
+### 检索管线重排：expandContext 前置
+
+- **问题**：`expandContext` 在 MMR 之后执行，MMR 做多样性去重后又被邻居块"污染"
+- **方案**：将 expandContext 移到 Rerank 之前
+  ```
+  Before: RRF → Rerank → MMR → expandContext → return
+  After:  RRF → expandContext → Rerank → MMR → return
+  ```
+- 理由：Reranker 基于完整语义打分（非截断短 chunk），MMR 在正确文本上做多样性计算
+- **文件**：`retrieval.service.ts` `retrieve()` — 重排管线顺序
+
+### 题目生成管道优化
+
+#### 忠实度审查：模型异构 + 评分刻度补全
+
+- **问题**：生成模型与审查模型同为 `deepseek-v4-flash`，存在自评盲区。评分刻度只有 5/3/1 三个锚点，4 和 2 空缺，模型面对"少量编造但主体还行"无法准确判分
+- **审查模型异构**（`question-generation.service.ts` `judgeFaithfulness()`）：
+  - 硬编码 `deepseek-v4-flash` → `FAITHFULNESS_JUDGE_MODEL` 环境变量，默认 `deepseek-reasoner`
+  - reasoner 加 `reasoning_effort: 'medium'` 开启内部推理链
+  - `max_tokens`：reasoner 4000（留推理空间），普通模型 300
+- **评分刻度补全**：
+  ```
+  Before: 5=全部来自原文  3=大部分来自  1=大量编造
+  After:  5=全部来自  4=表述转换  3=大部分+个别细节无支撑  2=明显外部知识补全  1=大量编造
+  ```
+- **配置**：`.env.example` 新增 `MIMO_TRAIN_MODEL`、`FAITHFULNESS_JUDGE_MODEL`
+
+#### 语义密度过滤器
+
+- **问题**：生成 Prompt 中"≥3 句连续展开"规则基于句子计数，F=ma / `--force` / "REST 通过 HTTP 方法操作资源" 等单句自包含知识点被误杀
+- **方案**：代码层面用实体密度替代 Prompt 句子计数
+  - 新建 `computeSemanticDensity()`：10 个正则模式检测实体（数字/公式符号/camelCase/snake_case/英文专有名词/《》书名/路径IP/命令行参数/日期时间），按匹配位置去重
+  - 密度 = 实体数 / 总字符数，阈值 0.01（每 100 字符 1 个实体）
+  - 生成循环中 LLM 调用前过滤，密度不足直接跳过
+- **Prompt 清理**：删除旧的"≥3 句"和"一句简介跳过"两条规则，LLM 不再自己判断信息量
+- **测试**：新建 `question-generation.service.test.ts`（14 用例），覆盖纯叙述/公式/代码标识符/专有名词/参数/综合密度/去重
+
+#### 拒收风暴 → 细粒度重切
+
+- **问题**：闸门拒收率曾达 40%，逐块生成失败后无恢复机制，白烧 LLM 调用
+- **方案**：滑动窗口监测 + 策略回退
+  ```
+  连续拒收 ≥ 5 题 → 剩余原文拼接 → splitForExtraction(text, 1500) → 继续生成
+  ```
+  原粒度为 3000 字/块，重切后 1500 字/块。小块上下文约束更强，LLM 更贴原文
+- 重切后 consecutiveRejects 归零，只触发一次（防无限重切）
+- 与逐块重试的区别：不回退已处理的块，不修改 Prompt，只改变输入粒度
+
+### 测试覆盖
+
+- 新增 2 个测试文件：`chat.controller.test.ts`（13 用例）、`question-generation.service.test.ts`（14 用例）
+- 测试总数：90 → **117**（8 文件），全部通过
+
+### 已提交

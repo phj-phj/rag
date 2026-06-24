@@ -1,7 +1,6 @@
 import { Request, Response } from 'express'
-import { askDocument, askDocumentStream, askDocumentForTraining, startTrainingStream, routeWithLLM } from '../services/chat.service'
+import { askDocument, askDocumentStream, askDocumentForTraining, startTrainingStream, routeWithLLM, filterAndExpand } from '../services/chat.service'
 import { retrieve } from '../services/retrieval.service'
-import { rewriteQuery } from '../services/rewrite.service'
 import { routeQuery } from '../services/router.service'
 import { debugPhase, debugInfo, debugRetrieval, debugConfidence, debugLLM, debugTiming, debugRoute } from '../utils/debug'
 import { BadRequestError } from '../utils/errors'
@@ -18,7 +17,7 @@ interface CoverageResult {
   reason: string
 }
 
-function checkCoverage(
+export function checkCoverage(
   chunks: { content: string; score: number }[],
 ): CoverageResult {
   // 信号 1：总文本量
@@ -27,10 +26,21 @@ function checkCoverage(
     return { sufficient: false, reason: `chunk 总文本量 ${totalText} 字 < 300` }
   }
 
-  // 信号 2：top chunk 质量
-  const topScore = chunks[0]?.score ?? 0
-  if (topScore < 0.15) {
-    return { sufficient: false, reason: `最高分 ${topScore.toFixed(3)} < 0.15` }
+  // 信号 2：top chunk 质量（绝对底线 + 峰谷突出比）
+  const top1 = chunks[0]?.score ?? 0
+  const top2 = chunks[1]?.score ?? 0
+
+  // 绝对底线：最高分低于 0.10 视为无效检索
+  if (top1 < 0.10) {
+    return { sufficient: false, reason: `top1=${top1.toFixed(3)} < 0.10` }
+  }
+
+  // 灰色区间 [0.10, 0.20)：需 PeakGap ≥ 0.15 证明 top 不是低分扎堆中的偶然
+  if (top1 < 0.20) {
+    const peakGap = top1 - top2
+    if (peakGap < 0.15) {
+      return { sufficient: false, reason: `top1=${top1.toFixed(3)} 灰色区间, PeakGap=${peakGap.toFixed(3)} < 0.15` }
+    }
   }
 
   return { sufficient: true, reason: 'ok' }
@@ -75,10 +85,10 @@ export async function ask(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    // Query 泛化 + 检索（快速/深度共用）
-    const rewritten = await rewriteQuery(question)
-    debugInfo('改写结果', rewritten || '(空)')
-    const retrievalQuery = question + ' ' + rewritten
+    // 一次 LLM 调用：检索词扩展 + 历史筛选
+    const history = req.body.history as Array<{ role: string; content: string }> | undefined
+    const { retrievalQuery, filtered: filteredHistory } = await filterAndExpand(question, history || [])
+    debugInfo('检索词', retrievalQuery)
 
     const retrievalStart = Date.now()
     const retrieved = await retrieve(retrievalQuery, 5)
@@ -135,7 +145,7 @@ export async function ask(req: Request, res: Response): Promise<void> {
     }))
 
     const llmStart = Date.now()
-    const result = await askDocument(question, chunks, req.body.thinking === true, req.body.history)
+    const result = await askDocument(question, chunks, req.body.thinking === true, history, filteredHistory)
     debugLLM(0, Date.now() - llmStart, 0)
     debugTiming()
 
@@ -190,10 +200,9 @@ export async function askStream(req: Request, res: Response): Promise<void> {
     return
   }
 
-  // Query 泛化
-  const rewritten = await rewriteQuery(question)
-  debugInfo('改写结果', rewritten || '(空)')
-  const retrievalQuery = question + ' ' + rewritten
+  // 一次 LLM 调用：检索词扩展 + 历史筛选
+  const { retrievalQuery, filtered: filteredHistory } = await filterAndExpand(question, history || [])
+  debugInfo('检索词', retrievalQuery)
 
   // 检索
   const retrievalStart = Date.now()
@@ -259,7 +268,7 @@ export async function askStream(req: Request, res: Response): Promise<void> {
     res.flushHeaders()
 
     try {
-      const stream = askDocumentStream(question, chunks, req.body.thinking === true, req.body.history)
+      const stream = askDocumentStream(question, chunks, req.body.thinking === true, history, filteredHistory)
 
       // 先发 docs
       res.write(`data: ${JSON.stringify({ type: 'docs', docs })}\n\n`)

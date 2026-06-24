@@ -13,7 +13,9 @@
     "rebuild": "ts-node src/rebuild-all.ts",
     "reprocess": "ts-node src/reprocess-docs.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval:retrieval": "ts-node src/eval-retrieval.ts",
+    "eval:generation": "ts-node src/evaluate-generation.ts"
   },
   "keywords": [],
   "author": "",

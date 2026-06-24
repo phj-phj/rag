@@ -212,14 +212,21 @@ export async function retrieve(
   const merged = rrfMerge(vecChunks, ftsChunks, topK * CANDIDATE_FACTOR, vecResults, ftsResults, ftsResults.length)
   logger.info(`[retrieval] 双路粗召 ${vecChunks.length}+${ftsChunks.length} → RRF融合 ${merged.length}`)
 
-  // ── Rerank 精排（粗召结果重新打分排序）──
+  // ── 上下文展开（Rerank 之前，补全短 chunk 语义后再精排）──
+  let expanded = merged
+  if (opts?.expandContext !== false) {
+    expanded = await expandContext(merged)
+    logger.info(`[retrieval] 上下文展开: ${merged.length}条 → ${expanded.length}条`)
+  }
+
+  // ── Rerank 精排（展开后的完整语义打分）──
   let reranked: (RetrievedChunk & { _rank?: number })[]
   if (opts?.disableRerank) {
     logger.info('[retrieval] Rerank 已禁用，跳过')
-    reranked = merged.map(m => ({ ...m, score: Math.min(1, m.score * 2) }))
+    reranked = expanded.map(m => ({ ...m, score: Math.min(1, m.score * 2) }))
   } else {
-    reranked = await rerank(question, merged, topK * 2)
-    logger.info(`[retrieval] Rerank精排: ${merged.length}条 → ${reranked.length}条`)
+    reranked = await rerank(question, expanded, topK * 2)
+    logger.info(`[retrieval] Rerank精排: ${expanded.length}条 → ${reranked.length}条`)
   }
 
   // MMR 多样性选择
@@ -234,11 +241,6 @@ export async function retrieve(
   selected.forEach((c: RetrievedChunk, i: number) => {
     logger.info(`[retrieval]   ${i + 1}. [${c.documentTitle}] score=${c.score.toFixed(3)}`)
   })
-
-  // 上下文展开：短 chunk 补齐前后邻居
-  if (opts?.expandContext !== false) {
-    selected = await expandContext(selected)
-  }
 
   return selected
 }
