@@ -1,0 +1,23 @@
+2026-06-23 06:15:39 debug: [ai-debug] ═══ 收到问题 (流式) ═══
+2026-06-23 06:15:39 debug: [ai-debug]   原始问题: react
+2026-06-23 06:15:39 debug: [ai-debug]   历史轮数: 0
+2026-06-23 06:15:39 debug: [ai-debug] ── 路由: 快速通道 (得分=-1, 短问题) ──
+2026-06-23 06:15:41 debug: [ai-debug]   检索词: react
+2026-06-23 06:15:41 debug: [ai-debug]   向量维度: 1024
+2026-06-23 06:15:41 debug: [ai-debug]   双路检索耗时: 219ms
+2026-06-23 06:15:41 debug: [ai-debug]   向量命中: 20
+2026-06-23 06:15:41 debug: [ai-debug]   FTS命中: 20
+2026-06-23 06:15:41 debug: [ai-debug]   检索耗时: 537ms
+2026-06-23 06:15:41 debug: [ai-debug] ── 检索结果 (5条, 过滤0条) ──
+2026-06-23 06:15:41 debug: [ai-debug]   ✓ [0.877] [React就业篇.pdf] 包优化版本： React 架构以 v16 为分界点，分为 Stack 架构（v15 及之前）和 Fiber 架构（v16 及之后）。 Fiber 架构核心解决了...
+2026-06-23 06:15:41 debug: [ai-debug]   ✓ [0.784] [Rreact入门篇 第一章.pdf] 面直接{arr} 在React中使用map()循环创建JSX元素时，必须为每个列表项提供唯一的key属性，否则 会收到警告"Each child in a li...
+2026-06-23 06:15:41 debug: [ai-debug]   ✓ [0.636] [Rreact入门篇 第一章.pdf] 核心概念 初始化项目和精简 Facebook -> Meta？ 架设Instagram的时候，还是angular，对js MVC不满意，2013自己写了reac...
+2026-06-23 06:15:41 debug: [ai-debug]   ✗ [0.383] [React就业篇.pdf] 代默认的ref转发行为 三个参数： ref：父组件传递过来的ref对象 createHandle：回调函数，返回要暴露的对象 deps：依赖数组，类似useEf...
+2026-06-23 06:15:41 debug: [ai-debug]   ✗ [0.359] [React就业篇.pdf] ，不影响关键渲染流程（如⻚面绘制、用户交互）。 2. 核心特性 3. 使用建议 必须设置超时时间，否则回调可能延迟数秒触发；可通过其返回的ID，使用 windo...
+2026-06-23 06:15:41 debug: [ai-debug] ✓ 命中置信度: high (平均分 0.608)
+2026-06-23 06:15:45 debug: [ai-debug]   LLM: TTFB=0ms 总=3644ms tokens=142
+2026-06-23 06:15:45 debug: [ai-debug] ═══ 耗时: 收到问题 (流式)=5412ms | 总=5412ms ═══
+2026-06-23 06:18:26 debug: [ai-debug]   向量维度: 1024
+2026-06-23 06:18:26 debug: [ai-debug]   双路检索耗时: 235ms
+2026-06-23 06:18:26 debug: [ai-debug]   向量命中: 32
+2026-06-23 06:18:26 debug: [ai-debug]   FTS命中: 32

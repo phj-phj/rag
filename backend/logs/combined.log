@@ -1,0 +1,1 @@
+{"level":"info","message":"[chat.service] trainingLlm 初始化: model=deepseek-v4-flash maxTokens=4096","module":"chat","service":"papier-api","timestamp":"2026-06-23T09:43:19.909Z"}
