@@ -388,18 +388,9 @@ Mac/Windows 的 Docker Desktop 已处理 `.mjs` MIME 类型问题。如仍有问
 SELECT User, Host FROM mysql.user WHERE User='your_user';
 ```
 
-### 前端构建卡住（Vite rendering chunks）
-
-2G 内存机器可能不够，添加 swap：
-
-```bash
-sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
-sudo mkswap /swapfile && sudo swapon /swapfile
-```
-
 ### AI 接口返回 429
 
-智谱免费版限 1 个请求/秒，代码内置自动重试。如频繁遇到，建议切换 DeepSeek。
+智谱免费版限 1 个请求/秒，代码内置自动重试。如频繁遇到，建议切换模型。
 
 ### LanceDB 报 MODULE_NOT_FOUND
 
